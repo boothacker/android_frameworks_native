@@ -1,0 +1,5062 @@
+From e5d672f0301733f400f7eccfcf46e40d5a1d46c9 Mon Sep 17 00:00:00 2001
+From: Maksim Lebid <33498219+boothacker@users.noreply.github.com>
+Date: Thu, 18 Jan 2018 20:00:51 +0200
+Subject: [PATCH] add mtk stuffs... @blackrebel
+
+---
+ include/gui/BufferQueueCore.h                      |  48 +-
+ include/gui/ConsumerBase.h                         |   6 +
+ include/gui/GLConsumer.h                           |  80 ++-
+ include/gui/IGraphicBufferConsumer.h               |  10 +
+ include/gui/Surface.h                              |  12 +
+ include/gui/SurfaceComposerClient.h                |   5 +
+ include/gui/SurfaceControl.h                       |   5 +
+ include/gui/mediatek/BufferQueueDebug.h            |  94 ++++
+ include/gui/mediatek/BufferQueueDump.h             | 199 +++++++
+ include/gui/mediatek/BufferQueueMonitor.h          |  49 ++
+ include/gui/mediatek/FpsCounter.h                  |  69 +++
+ include/gui/mediatek/RingBuffer.h                  | 179 +++++++
+ include/private/gui/LayerState.h                   |  53 ++
+ include/ui/Fence.h                                 |   4 +
+ include/ui/GraphicBuffer.h                         |  13 +
+ include/ui/GraphicBufferAllocator.h                |   3 +
+ include/ui/GraphicBufferMapper.h                   |   9 +
+ include/ui/mediatek/IDumpTunnel.h                  |  49 ++
+ include/ui/mediatek/RefBaseDump.h                  |  63 +++
+ libs/gui/Android.mk                                |  21 +
+ libs/gui/BufferQueueConsumer.cpp                   |  34 ++
+ libs/gui/BufferQueueCore.cpp                       |  52 ++
+ libs/gui/BufferQueueProducer.cpp                   |  52 ++
+ libs/gui/ConsumerBase.cpp                          |   6 +
+ libs/gui/GLConsumer.cpp                            | 436 +++++++++++++++
+ libs/gui/IGraphicBufferConsumer.cpp                |   4 +
+ libs/gui/Surface.cpp                               |  79 +++
+ libs/gui/SurfaceComposerClient.cpp                 |  26 +
+ libs/gui/SurfaceControl.cpp                        |   8 +
+ libs/gui/mediatek/BufferQueueDebug.cpp             | 320 +++++++++++
+ libs/gui/mediatek/BufferQueueDump.cpp              | 583 +++++++++++++++++++++
+ libs/gui/mediatek/BufferQueueMonitor.cpp           | 130 +++++
+ libs/gui/mediatek/FpsCounter.cpp                   |  86 +++
+ libs/ui/Android.mk                                 |  13 +
+ libs/ui/Fence.cpp                                  |   3 +
+ libs/ui/GraphicBuffer.cpp                          |  32 ++
+ libs/ui/GraphicBufferMapper.cpp                    |  31 ++
+ libs/ui/PixelFormat.cpp                            |  16 +
+ libs/ui/mediatek/Fence.cpp                         |  59 +++
+ libs/ui/mediatek/IDumpTunnel.cpp                   | 114 ++++
+ libs/ui/mediatek/RefBaseDump.cpp                   | 111 ++++
+ services/surfaceflinger/Android.mk                 |   4 +
+ services/surfaceflinger/DisplayDevice.cpp          |   3 +
+ services/surfaceflinger/DisplayDevice.h            |   5 +
+ .../surfaceflinger/DisplayHardware/HWComposer.cpp  | 186 ++++++-
+ .../surfaceflinger/DisplayHardware/HWComposer.h    |  63 +++
+ services/surfaceflinger/Layer.cpp                  |  51 ++
+ services/surfaceflinger/Layer.h                    |  33 ++
+ services/surfaceflinger/LayerDim.cpp               |  33 ++
+ services/surfaceflinger/LayerDim.h                 |   6 +
+ services/surfaceflinger/SurfaceFlinger.cpp         | 114 ++++
+ services/surfaceflinger/SurfaceFlinger.h           |   6 +
+ services/surfaceflinger/SurfaceFlingerConsumer.cpp |   8 +
+ services/surfaceflinger/SurfaceFlingerConsumer.h   |  13 +
+ 54 files changed, 3688 insertions(+), 3 deletions(-)
+ create mode 100644 include/gui/mediatek/BufferQueueDebug.h
+ create mode 100644 include/gui/mediatek/BufferQueueDump.h
+ create mode 100644 include/gui/mediatek/BufferQueueMonitor.h
+ create mode 100644 include/gui/mediatek/FpsCounter.h
+ create mode 100644 include/gui/mediatek/RingBuffer.h
+ create mode 100644 include/ui/mediatek/IDumpTunnel.h
+ create mode 100644 include/ui/mediatek/RefBaseDump.h
+ create mode 100644 libs/gui/mediatek/BufferQueueDebug.cpp
+ create mode 100644 libs/gui/mediatek/BufferQueueDump.cpp
+ create mode 100644 libs/gui/mediatek/BufferQueueMonitor.cpp
+ create mode 100644 libs/gui/mediatek/FpsCounter.cpp
+ create mode 100644 libs/ui/mediatek/Fence.cpp
+ create mode 100644 libs/ui/mediatek/IDumpTunnel.cpp
+ create mode 100644 libs/ui/mediatek/RefBaseDump.cpp
+
+diff --git a/include/gui/BufferQueueCore.h b/include/gui/BufferQueueCore.h
+index 1050e3b..4769315 100644
+--- a/include/gui/BufferQueueCore.h
++++ b/include/gui/BufferQueueCore.h
+@@ -28,7 +28,39 @@
+ #include <utils/StrongPointer.h>
+ #include <utils/Trace.h>
+ #include <utils/Vector.h>
+-
++#ifdef MTK_MT6589
++#include <cutils/xlog.h>
++// class BufferQueueDebug cannot include by forward declaration.
++// Because of the performance issue, BufferQueueCore holds a BufferQueueDebug
++// object directly.
++#include <gui/mediatek/BufferQueueDebug.h>
++#ifdef MTK_COMPILE_BUFFERQUEUECORE
++#define BQ_LOGV(x, ...) XLOGV("[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), this, debugger.mId, debugger.mConnectedApi, debugger.mProducerPid, debugger.mConsumerPid, ##__VA_ARGS__)
++#define BQ_LOGD(x, ...) XLOGD("[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), this, debugger.mId, debugger.mConnectedApi, debugger.mProducerPid, debugger.mConsumerPid, ##__VA_ARGS__)
++#define BQ_LOGI(x, ...) XLOGI("[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), this, debugger.mId, debugger.mConnectedApi, debugger.mProducerPid, debugger.mConsumerPid, ##__VA_ARGS__)
++#define BQ_LOGW(x, ...) XLOGW("[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), this, debugger.mId, debugger.mConnectedApi, debugger.mProducerPid, debugger.mConsumerPid, ##__VA_ARGS__)
++#define BQ_LOGE(x, ...) XLOGE("[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), this, debugger.mId, debugger.mConnectedApi, debugger.mProducerPid, debugger.mConsumerPid, ##__VA_ARGS__)
++#else // MTK_COMPILE_BUFFERQUEUECORE
++#define BQ_LOGV(x, ...) XLOGV("[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), mCore.get(), mCore->debugger.mId, mCore->debugger.mConnectedApi, mCore->debugger.mProducerPid, mCore->debugger.mConsumerPid, ##__VA_ARGS__)
++#define BQ_LOGD(x, ...) XLOGD("[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), mCore.get(), mCore->debugger.mId, mCore->debugger.mConnectedApi, mCore->debugger.mProducerPid, mCore->debugger.mConsumerPid, ##__VA_ARGS__)
++#define BQ_LOGI(x, ...) XLOGI("[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), mCore.get(), mCore->debugger.mId, mCore->debugger.mConnectedApi, mCore->debugger.mProducerPid, mCore->debugger.mConsumerPid, ##__VA_ARGS__)
++#define BQ_LOGW(x, ...) XLOGW("[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), mCore.get(), mCore->debugger.mId, mCore->debugger.mConnectedApi, mCore->debugger.mProducerPid, mCore->debugger.mConsumerPid, ##__VA_ARGS__)
++#define BQ_LOGE(x, ...) XLOGE("[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), mCore.get(), mCore->debugger.mId, mCore->debugger.mConnectedApi, mCore->debugger.mProducerPid, mCore->debugger.mConsumerPid, ##__VA_ARGS__)
++#endif // MTK_COMPILE_BUFFERQUEUECORE
++
++#define ATRACE_BUFFER_INDEX(index)                                                  \
++    if (ATRACE_ENABLED()) {                                                         \
++        char ___traceBuf[1024];                                                     \
++        if (mCore->mSlots[index].mGraphicBuffer != NULL) {                                 \
++            snprintf(___traceBuf, 1024, "%s: %d (h:%p)", mConsumerName.string(),    \
++                (index), (mCore->mSlots[index].mGraphicBuffer->handle));                   \
++        } else {                                                                    \
++            snprintf(___traceBuf, 1024, "%s: %d", mConsumerName.string(),           \
++                (index));                                                           \
++        }                                                                           \
++        android::ScopedTrace ___bufTracer(ATRACE_TAG, ___traceBuf);                 \
++    }
++#else // MTK_MT6589
+ #define BQ_LOGV(x, ...) ALOGV("[%s] "x, mConsumerName.string(), ##__VA_ARGS__)
+ #define BQ_LOGD(x, ...) ALOGD("[%s] "x, mConsumerName.string(), ##__VA_ARGS__)
+ #define BQ_LOGI(x, ...) ALOGI("[%s] "x, mConsumerName.string(), ##__VA_ARGS__)
+@@ -42,6 +74,7 @@
+                 mCore->mConsumerName.string(), (index));             \
+         android::ScopedTrace ___bufTracer(ATRACE_TAG, ___traceBuf);  \
+     }
++#endif // MTK_MT6589
+ 
+ namespace android {
+ 
+@@ -54,6 +87,11 @@ class BufferQueueCore : public virtual RefBase {
+ 
+     friend class BufferQueueProducer;
+     friend class BufferQueueConsumer;
++//#ifdef MTK_MT6589
++    friend class BufferQueueDump;
++    friend class BufferQueueDebug;
++    friend class BufferQueueMonitor;
++//#endif
+ 
+ public:
+     // Used as a placeholder slot number when the value isn't pointing to an
+@@ -246,6 +284,14 @@ class BufferQueueCore : public virtual RefBase {
+     // mIsAllocatingCondition is a condition variable used by producers to wait until mIsAllocating
+     // becomes false.
+     mutable Condition mIsAllocatingCondition;
++
++#ifdef MTK_MT6589
++public:
++    BufferQueueDebug debugger;
++    // get connected api type for hwc usage
++    int32_t getConnectedApi() const { return mConnectedApi; }
++    static status_t drawDebugLineToGraphicBuffer(sp<GraphicBuffer> gb, uint32_t cnt, uint8_t val = 0xff);
++#endif // MTK_MT6589 
+ }; // class BufferQueueCore
+ 
+ } // namespace android
+diff --git a/include/gui/ConsumerBase.h b/include/gui/ConsumerBase.h
+index f7ab5ac..6a1b0cf 100644
+--- a/include/gui/ConsumerBase.h
++++ b/include/gui/ConsumerBase.h
+@@ -233,6 +233,12 @@ class ConsumerBase : public virtual RefBase,
+     //
+     // This mutex is intended to be locked by derived classes.
+     mutable Mutex mMutex;
++/*
++#ifdef MTK_MT6589
++public:
++    virtual status_t forceAuxConversionLocked() { return NO_ERROR; }
++#endif
++*/
+ };
+ 
+ // ----------------------------------------------------------------------------
+diff --git a/include/gui/GLConsumer.h b/include/gui/GLConsumer.h
+index e03de45..9c9c617 100644
+--- a/include/gui/GLConsumer.h
++++ b/include/gui/GLConsumer.h
+@@ -19,7 +19,6 @@
+ 
+ #include <EGL/egl.h>
+ #include <EGL/eglext.h>
+-
+ #include <gui/IGraphicBufferProducer.h>
+ #include <gui/BufferQueue.h>
+ #include <gui/ConsumerBase.h>
+@@ -30,6 +29,7 @@
+ #include <utils/Vector.h>
+ #include <utils/threads.h>
+ 
++#include <gui/mediatek/BufferQueueDebug.h>
+ namespace android {
+ // ----------------------------------------------------------------------------
+ 
+@@ -490,6 +490,84 @@ class GLConsumer : public ConsumerBase {
+     // mode and releaseTexImage() has been called
+     static sp<GraphicBuffer> sReleasedTexImageBuffer;
+     sp<EglImage> mReleasedTexImage;
++
++/*
++#ifdef MTK_MT6589
++
++private:
++    // this condition is set to
++    // 1) TRUE when SurfaceTexture::updateTexImage() or
++    //    Layer::onDraw() is called
++    // 2) FALSE after buffer format conversion or
++    //    if the current texture is INVALID_BUFFER_SLOT
++    bool mAuxSlotConvert;
++
++    // this condition is set to
++    // 1) TRUE after the texture is converted to the appropriate color format
++    // 2) FALSE after the converted textured is already bound to the aux buffer slot
++    bool mAuxSlotDirty;
++
++    // aux buffer slot for format convert
++    // for video or camera data input not match texture format required by G3D
++    struct AuxSlot {
++        AuxSlot()
++        : mMva(0) {
++        }
++        // graphic buffer
++        Slot    slot;
++        // EGL information
++//        EglSlot eglSlot();
++//	  sp<EglImage> mEglImage; 
++        // m4u usage
++        void *mMva;
++    } mAuxSlot[2];
++    AuxSlot *mBackAuxSlot;
++    AuxSlot *mFrontAuxSlot;
++
++    // for drawing debug line
++    bool mLine;
++
++    // debug line count
++    uint32_t mLineCnt;
++
++    // clear enternal aux buffer data
++    status_t freeAuxSlotLocked(AuxSlot &src);
++
++    // dump internal aux buffer if exists
++    // currently, all aux buffer is in RGBA format
++    status_t dumpAux() const;
++
++public:
++    // get connected api type for debug purpose
++    int getConnectedApi() const { return (mConsumer != NULL) ? mConsumer->getConnectedApi() : -1; }
++
++    // for check if conversion still required
++    bool isAuxSlotNeedConvert() const { return mAuxSlotConvert; }
++
++    // check if need to bind new converted buffer data
++    bool isAuxSlotDirty() const { return mAuxSlotDirty; }
++
++    // bind texture to the aux buffer slot
++    status_t bindToAuxSlotLocked();
++
++    // convert current using buffer slot to aux slot
++    status_t convertToAuxSlotLocked(bool isForce);
++
++    // (for where not locked yet, add lock and call real function)
++    status_t bindToAuxSlot();
++    status_t convertToAuxSlot(bool isForce);
++
++    // force convert buffer before released
++    status_t forceAuxConversionLocked();
++
++    // check if color pixel format is supported by HW
++    status_t checkPixelFormatSupported() const;
++
++    // need to use destructor for its own buffer release
++    ~GLConsumer() { abandon(); };
++
++#endif
++*/
+ };
+ 
+ // ----------------------------------------------------------------------------
+diff --git a/include/gui/IGraphicBufferConsumer.h b/include/gui/IGraphicBufferConsumer.h
+index 2728d82..9ba5fb7 100644
+--- a/include/gui/IGraphicBufferConsumer.h
++++ b/include/gui/IGraphicBufferConsumer.h
+@@ -313,6 +313,16 @@ class IGraphicBufferConsumer : public IInterface {
+ 
+ public:
+     DECLARE_META_INTERFACE(GraphicBufferConsumer);
++#ifdef MTK_MT6589
++public:
++    // for real type check
++//    enum { TYPE_NONE = -1, TYPE_BufferQueue, TYPE_SurfaceTextureLayer };
++    enum { NO_CONNECTED_API = 0 };
++
++//    virtual int32_t getType() const { return TYPE_NONE; }
++
++    virtual int32_t getConnectedApi() const { return NO_CONNECTED_API; }
++#endif
+ };
+ 
+ // ----------------------------------------------------------------------------
+diff --git a/include/gui/Surface.h b/include/gui/Surface.h
+index 36b72e4..bad5e62 100644
+--- a/include/gui/Surface.h
++++ b/include/gui/Surface.h
+@@ -27,6 +27,10 @@
+ #include <utils/threads.h>
+ #include <utils/KeyedVector.h>
+ 
++#ifdef MTK_MT6589
++#include <gui/BufferQueueCore.h>
++#endif
++
+ struct ANativeWindow_Buffer;
+ 
+ namespace android {
+@@ -315,6 +319,14 @@ class Surface
+     bool mDequeuedOnce;
+ #endif
+ 
++#ifdef MTK_MT6589
++private:
++    // to track current client connection type
++    int mConnectedApi;
++
++    // to track queueBuffer() FPS
++    FpsCounter mQueueFps;
++#endif
+ };
+ 
+ }; // namespace android
+diff --git a/include/gui/SurfaceComposerClient.h b/include/gui/SurfaceComposerClient.h
+index 3cb1ee4..e036827 100644
+--- a/include/gui/SurfaceComposerClient.h
++++ b/include/gui/SurfaceComposerClient.h
+@@ -190,6 +190,11 @@ class SurfaceComposerClient : public RefBase
+                 status_t                    mStatus;
+                 sp<ISurfaceComposerClient>  mClient;
+                 Composer&                   mComposer;
++#ifdef MTK_MT6589
++public:
++    // For setting extra surface flags
++    status_t    setFlagsEx(const sp<IBinder>& id, uint32_t flags, uint32_t mask);
++#endif
+ };
+ 
+ // ---------------------------------------------------------------------------
+diff --git a/include/gui/SurfaceControl.h b/include/gui/SurfaceControl.h
+index db266aa..d729830 100644
+--- a/include/gui/SurfaceControl.h
++++ b/include/gui/SurfaceControl.h
+@@ -105,6 +105,11 @@ class SurfaceControl : public RefBase
+     sp<IGraphicBufferProducer>  mGraphicBufferProducer;
+     mutable Mutex               mLock;
+     mutable sp<Surface>         mSurfaceData;
++#ifdef MTK_MT6589
++public:
++    // setting extra surface flags
++    status_t    setFlagsEx(uint32_t flags, uint32_t mask);
++#endif
+ };
+ 
+ }; // namespace android
+diff --git a/include/gui/mediatek/BufferQueueDebug.h b/include/gui/mediatek/BufferQueueDebug.h
+new file mode 100644
+index 0000000..95b8e3e
+--- /dev/null
++++ b/include/gui/mediatek/BufferQueueDebug.h
+@@ -0,0 +1,94 @@
++#ifndef ANDROID_GUI_BUFFERQUEUEDEBUG_H
++#define ANDROID_GUI_BUFFERQUEUEDEBUG_H
++
++#include <gui/IGraphicBufferConsumer.h>
++#include <utils/RefBase.h>
++#include "FpsCounter.h"
++#define ION_MM_DBG_NAME_LEN 16
++
++namespace android {
++// ----------------------------------------------------------------------------
++
++class String8;
++class BufferQueueCore;
++class BufferQueueDump;
++struct BufferQueueDebug : public RefBase {
++    // debug target BQ info
++    wp<BufferQueueCore> mBq;
++    int32_t mId;
++    int mConnectedApi;
++    String8 mConsumerName;
++
++    // process info
++    int32_t mPid;
++    int32_t mProducerPid;
++    int32_t mConsumerPid;
++    String8 mProducerProcName;
++    String8 mConsumerProcName;
++
++    // track for producer buffer return
++    FpsCounter mQueueFps;
++
++    // track for consumer buffer return
++    FpsCounter mReleaseFps;
++
++    // whether the queue is hosted in GuiExtService or not
++    bool mIsInGuiExt;
++
++    // if debug line enabled
++    bool mLine;
++
++    // debug line count
++    uint32_t mLineCnt;
++
++    // for buffer dump
++    sp<BufferQueueDump> mDump;
++
++    // whether dump mechanism of general buffer queue is enabled or not
++    bool mGeneralDump;
++
++    // layer type in different scenarios
++    int mScenarioLayerType;
++
++    BufferQueueDebug();
++    virtual ~BufferQueueDebug();
++
++    // BufferQueueCore part
++    void onConstructor(wp<BufferQueueCore> bq, const String8& consumerName);
++    void onDestructor();
++    void onDump(String8 &result, const String8& prefix) const;
++    void onFreeBufferLocked(const int slot);
++
++    // BufferQueueConsumer part
++    void onConsumerDisconnectHead();
++    void onConsumerDisconnectTail();
++    void onSetConsumerName(const String8& consumerName);
++    void onAcquire(
++            const int buf,
++            const sp<GraphicBuffer>& gb,
++            const sp<Fence>& fence,
++            const int64_t timestamp,
++            const IGraphicBufferConsumer::BufferItem* const buffer);
++    void onRelease(const int buf);
++    void onConsumerConnect(
++            const sp<IConsumerListener>& consumerListener,
++            const bool controlledByApp);
++
++    // BufferQueueProducer part
++//    void setIonInfo(const sp<GraphicBuffer>& gb);
++    void onDequeue(const int outBuf, sp<GraphicBuffer>& gb, sp<Fence>& fence);
++    void onQueue(const int buf, const int64_t timestamp);
++    void onCancel(const int buf);
++    void onProducerConnect(
++            const sp<IBinder>& token,
++            const int api,
++            bool producerControlledByApp);
++    void onProducerDisconnect();
++};
++
++status_t getProcessName(int pid, String8& name);
++
++// ----------------------------------------------------------------------------
++}; // namespace android
++
++#endif // ANDROID_GUI_BUFFERQUEUEDEBUG_H
+diff --git a/include/gui/mediatek/BufferQueueDump.h b/include/gui/mediatek/BufferQueueDump.h
+new file mode 100644
+index 0000000..369a8fc
+--- /dev/null
++++ b/include/gui/mediatek/BufferQueueDump.h
+@@ -0,0 +1,199 @@
++/*
++ * Copyright (C) 2012 The Android Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++#ifndef ANDROID_GUI_BUFFERQUEUEDUMP_H
++#define ANDROID_GUI_BUFFERQUEUEDUMP_H
++
++#include <ui/Fence.h>
++#include <ui/GraphicBuffer.h>
++#include <ui/mediatek/IDumpTunnel.h>
++
++#include <utils/KeyedVector.h>
++
++#include <gui/mediatek/RingBuffer.h>
++
++namespace android {
++// ----------------------------------------------------------------------------
++
++
++class BufferQueue;
++class DumpBuffer;
++class BackupBuffer;
++class BackupBufPusher;
++class BackupBufDumper;
++class BufferQueueCore;
++
++// class for BufferQueue backup and dump utils impl
++class BufferQueueDump : public BnDumpTunnel {
++public:
++    enum MODE {
++        TRACK_PRODUCER = 0,
++        TRACK_CONSUMER
++    };
++
++private:
++    String8 mName;
++    String8 mKeyName;
++
++    // RingBuffer utils for buffer backup storage
++    RingBuffer< sp<BackupBuffer> > mBackupBuf;
++    sp<BackupBufPusher> mBackupBufPusher;
++    sp<BackupBufDumper> mBackupBufDumper;
++    bool mIsBackupBufInited;
++    MODE mMode;
++
++    // for IDumpTunnel interface
++    wp<BufferQueueCore> mBq;
++    bool mIsRegistered;
++
++    // keep reference for 
++    DefaultKeyedVector< uint32_t, sp<DumpBuffer> > mObtainedBufs;
++    sp<DumpBuffer> mLastObtainedBuf;
++
++    // update buffer into back up
++    void updateBuffer(const int& slot, const int64_t& timestamp = -1);
++
++    // add buffer into back update
++    void addBuffer(const int& slot,
++                   const sp<GraphicBuffer>& buffer,
++                   const sp<Fence>& fence,
++                   const int64_t& timestamp = -1);
++
++    // check backup depth setting, and reset length if changed
++    int checkBackupCount();
++    // check backup depth setting, and reset length if changed
++    int checkBackupCnt(char* str);
++
++    // parse/match functions
++    bool matchCName(char* str);
++    bool matchProc(char* str);
++    int match(char* substr);
++    bool parseDumpConfig(const char* value, uint32_t* pBackupCnt);
++
++    // set backup count after parsing
++    void setBackupCount(int32_t count);
++
++    // dump mObtainedBufs when dump buffers
++    void dumpObtainedBufs();
++
++    // consumer's pid and process name
++    int32_t mPid;
++    String8 mProcName;
++
++public:
++    BufferQueueDump(const MODE& mode, const wp<BufferQueueCore>& bq);
++
++    // name for this dump
++    void setName(const String8& name);
++
++    // trigger the dump process
++    void dump(String8& result, const char* prefix);
++
++    // related functions into original BufferQueue APIs
++    void onAcquireBuffer(const int& slot,
++                         const sp<GraphicBuffer>& buffer,
++                         const sp<Fence>& fence,
++                         const int64_t& timestamp);
++    void onReleaseBuffer(const int& slot);
++    void onFreeBuffer(const int& slot);
++    void onDequeueBuffer(const int& slot,
++                         const sp<GraphicBuffer>& buffer,
++                         const sp<Fence>& fence);
++    void onQueueBuffer(const int& slot, const int64_t& timestamp);
++    void onCancelBuffer(const int& slot);
++    void onConsumerDisconnect();
++    
++    // generate path for file dump
++    static void getDumpFileName(String8& fileName, const String8& name);
++    // IDump interface
++    virtual status_t kickDump(String8& /*result*/, const char* /*prefix*/);
++
++    // check register status
++    bool isRegistered() { return mIsRegistered; }
++    void setRegistered(const bool& isRegistered) {
++        if (mIsRegistered && !isRegistered)
++            mBq = NULL;
++        mIsRegistered = isRegistered;
++    }
++    void setKeyName(const String8& name) { mKeyName = name; }
++    const String8& getKeyName() { return mKeyName; }
++};
++
++
++// implement of buffer push
++class BackupBufPusher : public RingBuffer< sp<BackupBuffer> >::Pusher {
++public:
++    BackupBufPusher(RingBuffer< sp<BackupBuffer> >& rb) :
++        RingBuffer< sp<BackupBuffer> >::Pusher(rb) {}
++
++    // the main API to implement
++    virtual bool push(const sp<BackupBuffer>& in);
++};
++
++
++// implement of buffer dump
++class BackupBufDumper : public RingBuffer< sp<BackupBuffer> >::Dumper {
++private:
++    String8 mName;
++
++public:
++    BackupBufDumper(RingBuffer< sp<BackupBuffer> >& rb)
++        : RingBuffer< sp<BackupBuffer> >::Dumper(rb)
++        , mName("unnamed BackupBufDumper") {}
++
++    void setName(const String8& name) { mName = name; }
++
++    // the main API to implement
++    virtual void dump(String8& result, const char* prefix);
++};
++
++
++// struct of record for acquired buffer
++class DumpBuffer : public LightRefBase<DumpBuffer> {
++public:
++    DumpBuffer(const sp<GraphicBuffer> buffer = NULL,
++                   const sp<Fence>& fence = Fence::NO_FENCE,
++                   int64_t timestamp = 0)
++        : mGraphicBuffer(buffer)
++        , mFence(fence)
++        , mTimeStamp(timestamp) {}
++
++    sp<GraphicBuffer> mGraphicBuffer;
++    sp<Fence> mFence;
++    int64_t mTimeStamp;
++
++    void dump(const String8& prefix);
++};
++
++
++// struct of record for backup buffer
++class BackupBuffer : public LightRefBase<BackupBuffer> {
++public:
++    BackupBuffer(const sp<GraphicBuffer> buffer = NULL,
++                 nsecs_t timestamp = 0)
++        : mGraphicBuffer(buffer)
++        , mTimeStamp(timestamp)
++        , mSourceHandle(NULL) {}
++
++    sp<GraphicBuffer> mGraphicBuffer;
++    nsecs_t mTimeStamp;
++    const void* mSourceHandle;
++};
++
++// ----------------------------------------------------------------------------
++}; // namespace android
++
++#endif // ANDROID_GUI_BUFFERQUEUEDUMP_H
+diff --git a/include/gui/mediatek/BufferQueueMonitor.h b/include/gui/mediatek/BufferQueueMonitor.h
+new file mode 100644
+index 0000000..e108cc2
+--- /dev/null
++++ b/include/gui/mediatek/BufferQueueMonitor.h
+@@ -0,0 +1,49 @@
++#ifndef ANDROID_GUI_BUFFERQUEUEMONITOR_H
++#define ANDROID_GUI_BUFFERQUEUEMONITOR_H
++
++#include <utils/String8.h>
++#include <utils/KeyedVector.h>
++#include <utils/Singleton.h>
++#include <ui/mediatek/IDumpTunnel.h>
++
++namespace android
++{
++class BufferQueueMonitor;
++class BufferQueueCore;
++class BufferQueueDumpTunnel : public BnDumpTunnel
++{
++    public:
++        BufferQueueDumpTunnel(BufferQueueMonitor* monitor);
++        virtual ~BufferQueueDumpTunnel();
++
++        // IDumpTunnel interface
++        virtual status_t kickDump(String8& /*result*/, const char* /*prefix*/);
++
++    private:
++        BufferQueueMonitor *mMonitor;
++};
++
++class BufferQueueMonitor : public Singleton<BufferQueueMonitor> 
++{
++    public:
++        BufferQueueMonitor();
++        virtual ~BufferQueueMonitor();
++
++        status_t monitor(wp<BufferQueueCore> bq);
++        status_t unmonitor(wp<BufferQueueCore> bq);
++
++        status_t dump(String8& result, const char* prefix);
++
++    private:
++        status_t getProcessName();
++
++        String8 mProcessName;
++
++        bool mIsRegistered;
++        sp<BufferQueueDumpTunnel> mBqDumpTunnel;
++
++        mutable Mutex mMutex;
++        KeyedVector<wp<BufferQueueCore>, int> mBqList;
++};
++};
++#endif
+diff --git a/include/gui/mediatek/FpsCounter.h b/include/gui/mediatek/FpsCounter.h
+new file mode 100644
+index 0000000..29bf03f
+--- /dev/null
++++ b/include/gui/mediatek/FpsCounter.h
+@@ -0,0 +1,69 @@
++/*
++ * Copyright (C) 2012 The Android Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++#ifndef ANDROID_GUI_FPSCOUNTER_H
++#define ANDROID_GUI_FPSCOUNTER_H
++
++namespace android {
++// ----------------------------------------------------------------------------
++
++// tool class for FPS statistics, provide AVG, MAX, MIN message
++// * AVG for FPS in a given duration
++// * MAX and MIN for stability reference
++class FpsCounter {
++private:
++    // for AVG
++    float       mFps;
++
++    // for MAX, MIN
++    nsecs_t     mMaxDuration;
++    nsecs_t     mMinDuration;
++    nsecs_t     mMaxDurationCounting;
++    nsecs_t     mMinDurationCounting;
++
++    // per interval result
++    uint32_t    mFrames;
++    nsecs_t     mLastLogTime;
++    nsecs_t     mLastLogDuration;
++
++    // per update result
++    nsecs_t     mLastTime;
++    nsecs_t     mLastDuration;
++
++public:
++    // the given counting interval, read system property by default
++    nsecs_t     mCountInterval;
++
++    FpsCounter() { reset(); }
++    ~FpsCounter() {}
++
++    // main control
++    bool reset();
++    bool update(nsecs_t time);
++    bool update();
++
++    // get result
++    inline float   getFps()             { return mFps;             }
++    inline nsecs_t getMaxDuration()     { return mMaxDuration;     }
++    inline nsecs_t getMinDuration()     { return mMinDuration;     }
++    inline nsecs_t getLastLogDuration() { return mLastLogDuration; }
++    inline nsecs_t getLastDuration()    { return mLastDuration;    }
++};
++
++// ----------------------------------------------------------------------------
++}; // namespace android
++
++#endif // ANDROID_GUI_FPSCOUNTER_H
+diff --git a/include/gui/mediatek/RingBuffer.h b/include/gui/mediatek/RingBuffer.h
+new file mode 100644
+index 0000000..6420858
+--- /dev/null
++++ b/include/gui/mediatek/RingBuffer.h
+@@ -0,0 +1,179 @@
++/*
++ * Copyright (C) 2012 The Android Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++#ifndef ANDROID_GUI_RINGBUFFER_H
++#define ANDROID_GUI_RINGBUFFER_H
++
++#include <utils/Vector.h>
++#include <utils/Mutex.h>
++#include <utils/StrongPointer.h>
++#include <utils/RefBase.h>
++
++#include <cutils/xlog.h>
++
++namespace android {
++
++// ----------------------------------------------------------------------------
++template <typename TYPE>
++class RingBuffer : public LightRefBase< RingBuffer<TYPE> > {
++public:
++
++    // for custom data push
++    class Pusher : public LightRefBase<Pusher> {
++    protected:
++        RingBuffer<TYPE>& mRingBuffer;
++
++        // use friend privillege to access necessary data
++        TYPE& editHead();
++
++    public:
++        Pusher(RingBuffer<TYPE>& rb) : mRingBuffer(rb) {}
++        virtual bool push(const TYPE& in) = 0;
++    };
++
++    // for custom data dump
++    class Dumper : public LightRefBase<Dumper> {
++    protected:
++        RingBuffer<TYPE>& mRingBuffer;
++
++        // use friend privillege to access necessary data
++        const TYPE& getItem(uint32_t idx);
++
++    public:
++        Dumper(RingBuffer<TYPE>& rb) : mRingBuffer(rb) {}
++        virtual void dump(String8& result, const char* prefix) = 0;
++    };
++
++private:
++    Vector<TYPE> mBuffer;
++
++    uint32_t mHead;
++    uint32_t mSize;
++    uint64_t mCount;
++
++    Mutex mLock;
++
++    sp<Pusher> mPusher;
++    sp<Dumper> mDumper;
++
++public:
++    RingBuffer()
++        : mSize(0)
++        , mHead(0)
++        , mCount(0) {}
++
++    ~RingBuffer() {}
++
++    uint32_t getSize() { return mSize; }
++    uint32_t getCount() { return mCount; }
++    uint32_t getValidSize() { return (mSize < mCount) ? mSize : mCount; }
++    Mutex getLock() { return mLock; }
++
++    // reset buffers and counters
++    void resize(uint32_t size);
++
++    // push data to head, and return the count
++    uint32_t push(const TYPE& in);
++
++    // just print some info if no dumper assigned
++    void dump(String8& result, const char* prefix);
++
++    void setPusher(sp<Pusher>& pusher);
++    void setDumper(sp<Dumper>& dumper);
++
++    friend class Pusher;
++    friend class Dumper;
++};
++
++// ----------------------------------------------------------------------------
++template <typename TYPE>
++TYPE& RingBuffer<TYPE>::Pusher::editHead() {
++    return mRingBuffer.mBuffer.editItemAt(mRingBuffer.mHead);
++}
++
++template <typename TYPE>
++const TYPE& RingBuffer<TYPE>::Dumper::getItem(uint32_t idx) {
++    uint32_t oldest = (mRingBuffer.mCount > mRingBuffer.mSize)
++                    ? mRingBuffer.mHead
++                    : 0;
++    idx = (oldest + idx) % mRingBuffer.mSize;
++    return mRingBuffer.mBuffer[idx];
++}
++
++template <typename TYPE>
++void RingBuffer<TYPE>::resize(uint32_t size) {
++    Mutex::Autolock lock(mLock);
++
++    if (mSize != size) {
++        XLOGI("[%s](this:%p) resize(%u => %u)", __func__, this, mSize, size);
++
++        mSize = size;
++        mHead = 0;
++        mCount = 0;
++
++        // free old backup data and reset storage
++        mBuffer.clear();
++        mBuffer.resize(mSize);
++    }
++}
++
++template <typename TYPE>
++uint32_t RingBuffer<TYPE>::push(const TYPE& in) {
++    Mutex::Autolock lock(mLock);
++
++    if (mPusher != NULL) {
++        if (!mPusher->push(in))
++            return mCount;
++    } else {
++        mBuffer.replaceAt(in, mHead);
++    }
++
++    // Update pointer
++    mHead++;
++    if (mHead >= mSize)
++        mHead = 0;
++
++    return mCount++;
++}
++
++template <typename TYPE>
++void RingBuffer<TYPE>::dump(String8& result, const char* prefix) {
++    Mutex::Autolock lock(mLock);
++
++    XLOGI("[%s] %p (mHead:%u, mSize:%u, mCount:%u)", __func__, this, mHead, mSize, mCount);
++
++    if (mDumper != NULL) {
++        mDumper->dump(result, prefix);
++    }
++}
++
++template <typename TYPE>
++void RingBuffer<TYPE>::setPusher(sp<Pusher>& pusher) {
++    Mutex::Autolock lock(mLock);
++    mPusher = pusher;
++}
++
++template <typename TYPE>
++void RingBuffer<TYPE>::setDumper(sp<Dumper>& dumper) {
++    Mutex::Autolock lock(mLock);
++    mDumper = dumper;
++}
++
++
++// ----------------------------------------------------------------------------
++}; // namespace android
++
++#endif // ANDROID_GUI_RINGBUFFER_H
+diff --git a/include/private/gui/LayerState.h b/include/private/gui/LayerState.h
+index 7dde80e..98fec04 100644
+--- a/include/private/gui/LayerState.h
++++ b/include/private/gui/LayerState.h
+@@ -30,6 +30,12 @@ namespace android {
+ class Parcel;
+ class ISurfaceComposerClient;
+ 
++#ifdef MTK_MT6589
++// declare IGraphicBufferProducer to avoid build fail
++class IBinder;
++class IGraphicBufferProducer;
++#endif
++
+ /*
+  * Used to communicate layer information between SurfaceFlinger and its clients.
+  */
+@@ -60,6 +66,43 @@ struct layer_state_t {
+         eTransparencyChanged        = 0x80000000,
+     };
+ 
++#ifdef MTK_MT6589
++    // setFlagsEx for extra layer control
++    // These value MUST be the same as defined in java domain code (in WindowManager.java)
++    enum {
++        eExInvalid           = 0x80000000,   // as need to update
++
++        // BYTE#3 LOW4 for PQ control
++        eExPQ_Mask           = 0x01000000,   // for PQ on/off
++        eExPQ_On             = 0x01000000,
++
++        eExPQ_Reserved_Mask  = 0x0E000000,   // reserved
++        eExPQ_Reserved_bit0  = 0x02000000,
++        eExPQ_Reserved_bit1  = 0x04000000,
++        eExPQ_Reserved_bit2  = 0x08000000,
++
++        // BYTE#2 for S3D layer control
++        eExS3D_Mask          = 0x00FF0000,
++
++        eExS3D_Layout_Mask   = 0x00F00000,   // for content layout
++        eExS3D_Unknown       = 0x00100000,
++        eExS3D_SideBySide    = 0x00200000,
++        eExS3D_TopAndBottom  = 0x00400000,
++        eExS3D_LRSwapped     = 0x00800000,
++
++        eExS3D_Display_Mask  = 0x00080000,   // for display mode
++        eExS3D_2D            = 0x00000000,
++        eExS3D_3D            = 0x00080000,
++
++        eExS3D_Reserved_Mask = 0x00070000,   // reserved
++        eExS3D_Reserved_bit0 = 0x00010000,
++        eExS3D_Reserved_bit1 = 0x00020000,
++        eExS3D_Reserved_bit2 = 0x00040000,
++
++        eExInitValue         = eExS3D_Unknown, // for layer init
++    };
++#endif
++
+     layer_state_t()
+         :   what(0),
+             x(0), y(0), z(0), w(0), h(0), layerStack(0), blur(0),
+@@ -69,6 +112,11 @@ struct layer_state_t {
+         matrix.dsdx = matrix.dtdy = 1.0f;
+         matrix.dsdy = matrix.dtdx = 0.0f;
+         crop.makeInvalid();
++#ifdef MTK_MT6589
++        // For setting extra surface flags
++        flagsEx = 0x00000000;
++        maskEx = 0x00000000;
++#endif
+     }
+ 
+     status_t    write(Parcel& output) const;
+@@ -98,6 +146,11 @@ struct layer_state_t {
+             uint8_t         reserved;
+             matrix22_t      matrix;
+             Rect            crop;
++#ifdef MTK_MT6589
++            // For setting extra surface flags
++            uint32_t        flagsEx;
++            uint32_t        maskEx;
++#endif
+             // non POD must be last. see write/read
+             Region          transparentRegion;
+ };
+diff --git a/include/ui/Fence.h b/include/ui/Fence.h
+index 20466b6..48460aa 100644
+--- a/include/ui/Fence.h
++++ b/include/ui/Fence.h
+@@ -110,6 +110,10 @@ class Fence
+     const Fence& operator = (const Fence& rhs) const;
+ 
+     int mFenceFd;
++#ifdef MTK_MT6589
++private:
++    void dump(int fd);
++#endif
+ };
+ 
+ }; // namespace android
+diff --git a/include/ui/GraphicBuffer.h b/include/ui/GraphicBuffer.h
+index 3a5b10d..c18ae36 100644
+--- a/include/ui/GraphicBuffer.h
++++ b/include/ui/GraphicBuffer.h
+@@ -166,6 +166,19 @@ class GraphicBuffer
+     sp<ANativeWindowBuffer> mWrappedBuffer;
+ 
+     uint64_t mId;
++
++#ifdef MTK_MT6589
++
++public:
++    status_t getIonFd(int *idx, int *num);
++    unsigned int getMva() { return mva; }
++    void setMva(unsigned int _mva);
++
++private:
++    unsigned int mva;
++    unsigned int msize;
++
++#endif
+ };
+ 
+ }; // namespace android
+diff --git a/include/ui/GraphicBufferAllocator.h b/include/ui/GraphicBufferAllocator.h
+index a6e3412..8bae4b6 100644
+--- a/include/ui/GraphicBufferAllocator.h
++++ b/include/ui/GraphicBufferAllocator.h
+@@ -83,6 +83,9 @@ class GraphicBufferAllocator : public Singleton<GraphicBufferAllocator>
+         PixelFormat format;
+         uint32_t usage;
+         size_t size;
++#ifdef MTK_MT6589
++        uint32_t pid;
++#endif
+     };
+     
+     static Mutex sLock;
+diff --git a/include/ui/GraphicBufferMapper.h b/include/ui/GraphicBufferMapper.h
+index 0ffc582..e104922 100644
+--- a/include/ui/GraphicBufferMapper.h
++++ b/include/ui/GraphicBufferMapper.h
+@@ -62,6 +62,10 @@ class GraphicBufferMapper : public Singleton<GraphicBufferMapper>
+     status_t getphys(buffer_handle_t handle, void** paddr);
+ #endif
+ 
++#ifdef MTK_MT6589
++    status_t getIonFd(buffer_handle_t handle, int *idx, int *num);
++#endif
++
+     // dumps information about the mapping of this handle
+     void dump(buffer_handle_t handle);
+ 
+@@ -69,6 +73,11 @@ class GraphicBufferMapper : public Singleton<GraphicBufferMapper>
+     friend class Singleton<GraphicBufferMapper>;
+     GraphicBufferMapper();
+     gralloc_module_t const *mAllocMod;
++
++#ifdef MTK_MT6589
++    ~GraphicBufferMapper();
++    extra_device_t *mExtraDev;
++#endif
+ };
+ 
+ // ---------------------------------------------------------------------------
+diff --git a/include/ui/mediatek/IDumpTunnel.h b/include/ui/mediatek/IDumpTunnel.h
+new file mode 100644
+index 0000000..8f9b663
+--- /dev/null
++++ b/include/ui/mediatek/IDumpTunnel.h
+@@ -0,0 +1,49 @@
++#ifndef ANDROID_GUI_IDUMPTUNNEL_H
++#define ANDROID_GUI_IDUMPTUNNEL_H
++
++#include <binder/IInterface.h>
++#include <utils/Singleton.h>
++
++namespace android
++{
++
++class IDumpTunnel : public IInterface {
++protected:
++    enum {
++        DUMPTUNNEL_DUMP = IBinder::FIRST_CALL_TRANSACTION
++    };
++
++public:
++    DECLARE_META_INTERFACE(DumpTunnel);
++
++    virtual status_t kickDump(String8& /*result*/, const char* /*prefix*/) = 0;
++};
++
++class BnDumpTunnel : public BnInterface<IDumpTunnel>
++{
++    virtual status_t onTransact(uint32_t code,
++                                const Parcel& data,
++                                Parcel* reply,
++                                uint32_t flags = 0);
++};
++
++// helper class for libgui_ext dynamic linking
++class DumpTunnelHelper : public Singleton<DumpTunnelHelper> {
++    void* mSoHandle;
++    bool (*mRegDumpPtr)(const sp<IDumpTunnel>&, const String8&);
++    bool (*mUnregDumpPtr)(const String8&);
++
++public:
++    DumpTunnelHelper();
++    virtual ~DumpTunnelHelper();
++
++    // register tunnel into guiext-server with a given key name
++    // and need to unregister it back
++    // in general usage, need to use identical key name for reg/unreg pair
++    bool regDump(const sp<IDumpTunnel>& tunnel, const String8& key);
++    bool unregDump(const String8& key);
++};
++
++
++};
++#endif
+diff --git a/include/ui/mediatek/RefBaseDump.h b/include/ui/mediatek/RefBaseDump.h
+new file mode 100644
+index 0000000..8431544
+--- /dev/null
++++ b/include/ui/mediatek/RefBaseDump.h
+@@ -0,0 +1,63 @@
++#ifndef ANDROID_REFBASE_DUMP_H__
++#define ANDROID_REFBASE_DUMP_H__
++
++#include <utils/String8.h>
++#include <utils/KeyedVector.h>
++#include <utils/Singleton.h>
++#include <ui/mediatek/IDumpTunnel.h>
++
++namespace android
++{
++class RefBaseMonitor;
++
++//-------------------------------------------------------------------------
++// RefBaseDump
++//-------------------------------------------------------------------------
++class RefBaseDump : public BnDumpTunnel {
++
++public:
++    RefBaseDump(RefBaseMonitor*);
++    virtual ~RefBaseDump();
++
++    // IDumpTunnel interface
++    virtual status_t kickDump(String8& /*result*/, const char* /*prefix*/);
++
++private:
++    RefBaseMonitor *mMonitor;
++};
++
++//-------------------------------------------------------------------------
++// RefBaseMonitor
++//-------------------------------------------------------------------------
++class RefBaseMonitor : public Singleton<RefBaseMonitor> {
++public:
++    RefBaseMonitor();
++    virtual ~RefBaseMonitor();
++
++    // add refbase to the monitored list
++    status_t monitor(RefBase* );
++
++    // remove refbase from the monitored list
++    status_t unmonitor(RefBase* );
++
++    // dump all elements in the monitored list and call printRefs if mIsTracking equals 1
++    status_t dump(String8& result);
++
++private:
++    status_t getProcessName();
++
++    // if trackMe needed
++    bool mIsTracking;
++
++    String8 mProcessName;
++
++    sp<RefBaseDump> mDump;
++
++    // the list where monitored refbase objects are saved
++    KeyedVector<RefBase*,int> RbList;
++
++    mutable Mutex mMutex;;
++};
++
++};
++#endif
+diff --git a/libs/gui/Android.mk b/libs/gui/Android.mk
+index 9770da2..a919e80 100644
+--- a/libs/gui/Android.mk
++++ b/libs/gui/Android.mk
+@@ -46,6 +46,27 @@ LOCAL_SHARED_LIBRARIES := \
+ 	libutils \
+ 	liblog
+ 
++LOCAL_SRC_FILES += \
++      mediatek/BufferQueueDebug.cpp \
++	mediatek/BufferQueueDump.cpp \
++	mediatek/BufferQueueMonitor.cpp 
++
++	LOCAL_C_INCLUDES += $(TOP)/hardware/mediatek/dpframework/inc \
++  	      		  $(TOP)/hardware/mediatek/ui_ext/inc
++      LOCAL_CFLAGS := -DLOG_TAG=\"GLConsumer\"
++      LOCAL_CFLAGS += -DUSE_DP
++
++ 	LOCAL_SHARED_LIBRARIES += \
++	libdpframework \
++	libdl \
++	libhardware \
++	libui_ext \
++	libselinux
++
++
++LOCAL_CFLAGS += -DMTK_MT6589
++
++
+ # Executed only on QCOM BSPs
+ ifeq ($(TARGET_USES_QCOM_BSP),true)
+     LOCAL_C_INCLUDES += $(call project-path-for,qcom-display)/libgralloc
+diff --git a/libs/gui/BufferQueueConsumer.cpp b/libs/gui/BufferQueueConsumer.cpp
+index 1910280..13d7144 100644
+--- a/libs/gui/BufferQueueConsumer.cpp
++++ b/libs/gui/BufferQueueConsumer.cpp
+@@ -180,6 +180,16 @@ status_t BufferQueueConsumer::acquireBuffer(BufferItem* outBuffer,
+         outBuffer->mGraphicBuffer = NULL;
+     }
+ 
++#ifdef MTK_MT6589
++    // 1. for dump, buffers holded by BufferQueueDump should be updated
++    // 2. to draw white debug line
++    mCore->debugger.onAcquire(
++            slot,
++            front->mGraphicBuffer,
++            front->mFence,
++            front->mTimestamp,
++            outBuffer);
++#endif
+     mCore->mQueue.erase(front);
+ 
+     // We might have freed a slot while dropping old buffers, or the producer
+@@ -343,6 +353,10 @@ status_t BufferQueueConsumer::releaseBuffer(int slot, uint64_t frameNumber,
+         }
+ 
+         mCore->mDequeueCondition.broadcast();
++#ifdef MTK_MT6589
++        // for dump, buffers holded by BufferQueueDump should be updated
++        mCore->debugger.onRelease(slot);
++#endif
+     } // Autolock scope
+ 
+     // Call back without lock held
+@@ -361,9 +375,14 @@ status_t BufferQueueConsumer::connect(
+         BQ_LOGE("connect(C): consumerListener may not be NULL");
+         return BAD_VALUE;
+     }
++#ifdef MTK_MT6589
++    // to set process's name and pid of consumer
++    mCore->debugger.onConsumerConnect(consumerListener, controlledByApp);
++#else
+ 
+     BQ_LOGV("connect(C): controlledByApp=%s",
+             controlledByApp ? "true" : "false");
++#endif
+ 
+     Mutex::Autolock lock(mCore->mMutex);
+ 
+@@ -381,7 +400,13 @@ status_t BufferQueueConsumer::connect(
+ status_t BufferQueueConsumer::disconnect() {
+     ATRACE_CALL();
+ 
++#ifdef MTK_MT6589
++    // to reset pid of the consumer
++    mCore->debugger.onConsumerDisconnectHead();
++    BQ_LOGI("disconnect(C)");
++#else
+     BQ_LOGV("disconnect(C)");
++#endif
+ 
+     Mutex::Autolock lock(mCore->mMutex);
+ 
+@@ -395,6 +420,11 @@ status_t BufferQueueConsumer::disconnect() {
+     mCore->mQueue.clear();
+     mCore->freeAllBuffersLocked();
+     mCore->mDequeueCondition.broadcast();
++#ifdef MTK_MT6589
++    // NOTE: this line must be placed after lock(mMutex)
++    // for dump, buffers holded by BufferQueueDump should be updated
++    mCore->debugger.onConsumerDisconnectTail();
++#endif
+     return NO_ERROR;
+ }
+ 
+@@ -504,6 +534,10 @@ void BufferQueueConsumer::setConsumerName(const String8& name) {
+     Mutex::Autolock lock(mCore->mMutex);
+     mCore->mConsumerName = name;
+     mConsumerName = name;
++#ifdef MTK_MT6589
++    // update dump info and prepare for drawing debug line
++    mCore->debugger.onSetConsumerName(name);
++#endif
+ }
+ 
+ status_t BufferQueueConsumer::setDefaultBufferFormat(uint32_t defaultFormat) {
+diff --git a/libs/gui/BufferQueueCore.cpp b/libs/gui/BufferQueueCore.cpp
+index bb7a6d9..19f7ef1 100644
+--- a/libs/gui/BufferQueueCore.cpp
++++ b/libs/gui/BufferQueueCore.cpp
+@@ -17,6 +17,10 @@
+ #define LOG_TAG "BufferQueueCore"
+ #define ATRACE_TAG ATRACE_TAG_GRAPHICS
+ //#define LOG_NDEBUG 0
++#ifdef MTK_MT6589
++// this macro is used in BQ_LOG
++#define MTK_COMPILE_BUFFERQUEUECORE
++#endif
+ 
+ #define EGL_EGLEXT_PROTOTYPES
+ 
+@@ -30,6 +34,10 @@
+ #include <gui/ISurfaceComposer.h>
+ #include <private/gui/ComposerService.h>
+ 
++#ifdef MTK_MT6589
++#include <gui/mediatek/BufferQueueDump.h>
++#include <gui/mediatek/BufferQueueMonitor.h>
++#endif
+ template <typename T>
+ static inline T max(T a, T b) { return a > b ? a : b; }
+ 
+@@ -75,9 +83,19 @@ BufferQueueCore::BufferQueueCore(const sp<IGraphicBufferAlloc>& allocator) :
+             BQ_LOGE("createGraphicBufferAlloc failed");
+         }
+     }
++#ifdef MTK_MT6589
++    debugger.onConstructor(this, mConsumerName);
++#endif
+ }
+ 
++#ifdef MTK_MT6589
++BufferQueueCore::~BufferQueueCore() {
++    Mutex::Autolock lock(mMutex);
++    debugger.onDestructor();
++}
++#else
+ BufferQueueCore::~BufferQueueCore() {}
++#endif
+ 
+ void BufferQueueCore::dump(String8& result, const char* prefix) const {
+     Mutex::Autolock lock(mMutex);
+@@ -85,12 +103,23 @@ void BufferQueueCore::dump(String8& result, const char* prefix) const {
+     String8 fifo;
+     Fifo::const_iterator current(mQueue.begin());
+     while (current != mQueue.end()) {
++#ifdef MTK_MT6589
++        // adjust fifo log to improve readability
++        fifo.appendFormat("\n%s    %02d:%p crop=[%d,%d,%d,%d], "
++                "xform=0x%02x, time=%#" PRIx64 ", scale=%s",
++                prefix,
++                current->mSlot, current->mGraphicBuffer.get(),
++                current->mCrop.left, current->mCrop.top, current->mCrop.right,
++                current->mCrop.bottom, current->mTransform, current->mTimestamp,
++                BufferItem::scalingModeName(current->mScalingMode));
++#else
+         fifo.appendFormat("%02d:%p crop=[%d,%d,%d,%d], "
+                 "xform=0x%02x, time=%#" PRIx64 ", scale=%s\n",
+                 current->mSlot, current->mGraphicBuffer.get(),
+                 current->mCrop.left, current->mCrop.top, current->mCrop.right,
+                 current->mCrop.bottom, current->mTransform, current->mTimestamp,
+                 BufferItem::scalingModeName(current->mScalingMode));
++#endif
+         ++current;
+     }
+ 
+@@ -101,6 +130,18 @@ void BufferQueueCore::dump(String8& result, const char* prefix) const {
+             mDefaultWidth, mDefaultHeight, mDefaultBufferFormat, mTransformHint,
+             mQueue.size(), fifo.string());
+ 
++#ifdef MTK_MT6589
++    // add more message for debug
++    result.appendFormat(
++            "%s this=%p (mConsumerName=%s, "
++            "mConnectedApi=%d, mConsumerUsageBits=%#x, mOverrideMaxBufferCount=%d, "
++            "mId=%d, mPid=%d, producer=[%d:%s], consumer=[%d:%s])\n",
++            prefix, this, mConsumerName.string(),
++            mConnectedApi, mConsumerUsageBits, mOverrideMaxBufferCount,
++            debugger.mId, debugger.mPid,
++            debugger.mProducerPid, debugger.mProducerProcName.string(),
++            debugger.mConsumerPid, debugger.mConsumerProcName.string());
++#endif
+     // Trim the free buffers so as to not spam the dump
+     int maxBufferCount = 0;
+     for (int s = BufferQueueDefs::NUM_BUFFER_SLOTS - 1; s >= 0; --s) {
+@@ -128,6 +169,10 @@ void BufferQueueCore::dump(String8& result, const char* prefix) const {
+ 
+         result.append("\n");
+     }
++#ifdef MTK_MT6589
++    // to trigger static/continuous dump
++    debugger.onDump(result, String8::format("%s    ", prefix));
++#endif
+ }
+ 
+ int BufferQueueCore::getMinUndequeuedBufferCountLocked(bool async) const {
+@@ -194,7 +239,11 @@ void BufferQueueCore::freeBufferLocked(int slot) {
+         mSlots[slot].mNeedsCleanupOnRelease = true;
+     }
+     mSlots[slot].mBufferState = BufferSlot::FREE;
++#ifdef MTK_MT6589
++    mSlots[slot].mFrameNumber = 0;
++#else
+     mSlots[slot].mFrameNumber = UINT32_MAX;
++#endif
+     mSlots[slot].mAcquireCalled = false;
+     mSlots[slot].mFrameNumber = 0;
+ 
+@@ -204,6 +253,9 @@ void BufferQueueCore::freeBufferLocked(int slot) {
+         mSlots[slot].mEglFence = EGL_NO_SYNC_KHR;
+     }
+     mSlots[slot].mFence = Fence::NO_FENCE;
++#ifdef MTK_MT6589
++    debugger.onFreeBufferLocked(slot);
++#endif
+ }
+ 
+ void BufferQueueCore::freeAllBuffersLocked() {
+diff --git a/libs/gui/BufferQueueProducer.cpp b/libs/gui/BufferQueueProducer.cpp
+index 6f76019..7db8fc5 100644
+--- a/libs/gui/BufferQueueProducer.cpp
++++ b/libs/gui/BufferQueueProducer.cpp
+@@ -257,6 +257,12 @@ status_t BufferQueueProducer::dequeueBuffer(int *outSlot,
+         mConsumerName = mCore->mConsumerName;
+     } // Autolock scope
+ 
++#ifdef MTK_MT6589
++    // give a warning if dequeueBuffer() in a disconnected state
++    if (BufferQueueCore::NO_CONNECTED_API == mCore->mConnectedApi) {
++        BQ_LOGW("dequeueBuffer() in a disconnected state");
++    }
++#endif
+     BQ_LOGV("dequeueBuffer: async=%s w=%u h=%u format=%#x, usage=%#x",
+             async ? "true" : "false", width, height, format, usage);
+ 
+@@ -314,6 +320,9 @@ status_t BufferQueueProducer::dequeueBuffer(int *outSlot,
+                 (static_cast<uint32_t>(buffer->format) != format) ||
+                 ((static_cast<uint32_t>(buffer->usage) & usage) != usage))
+         {
++#ifdef MTK_MT6589
++            BQ_LOGI("new GraphicBuffer needed");
++#endif
+             mSlots[found].mAcquireCalled = false;
+             mSlots[found].mGraphicBuffer = NULL;
+             mSlots[found].mRequestBufferCalled = false;
+@@ -379,10 +388,19 @@ status_t BufferQueueProducer::dequeueBuffer(int *outSlot,
+         eglDestroySyncKHR(eglDisplay, eglFence);
+     }
+ 
++#ifdef MTK_MT6589
++    // for dump, buffers holded by BufferQueueDump should be updated
++    mCore->debugger.onDequeue(
++            *outSlot, mSlots[*outSlot].mGraphicBuffer, *outFence);
++
++    // mark android original unsafe log here
++    // no lock protection, and not important info
++#else
+     BQ_LOGV("dequeueBuffer: returning slot=%d/%" PRIu64 " buf=%p flags=%#x",
+             *outSlot,
+             mSlots[*outSlot].mFrameNumber,
+             mSlots[*outSlot].mGraphicBuffer->handle, returnFlags);
++#endif
+ 
+     return returnFlags;
+ }
+@@ -513,6 +531,12 @@ status_t BufferQueueProducer::queueBuffer(int slot,
+         const QueueBufferInput &input, QueueBufferOutput *output) {
+     ATRACE_CALL();
+     ATRACE_BUFFER_INDEX(slot);
++#ifdef MTK_MT6589
++    // give a warning if queueBuffer() in a disconnected state
++    if (BufferQueueCore::NO_CONNECTED_API == mCore->mConnectedApi) {
++        BQ_LOGW("queueBuffer() in a disconnected state");
++    }
++#endif
+ 
+     int64_t timestamp;
+     bool isAutoTimestamp;
+@@ -603,6 +627,16 @@ status_t BufferQueueProducer::queueBuffer(int slot,
+             return BAD_VALUE;
+         }
+ 
++#ifdef MTK_MT6589
++        if (mCore->mQueue.size() > 1) {
++            // means consumer is slower than producer
++            BQ_LOGI("RunningBehind, queued size:%zd", mCore->mQueue.size());
++
++            char ___traceBuf[256];
++            snprintf(___traceBuf, 256, "RunningBehind(q:%zd)", mCore->mQueue.size());
++            android::ScopedTrace ___bufTracer(ATRACE_TAG, ___traceBuf);
++        }
++#endif
+         mSlots[slot].mFence = fence;
+         mSlots[slot].mBufferState = BufferSlot::QUEUED;
+         ++mCore->mFrameCounter;
+@@ -698,6 +732,10 @@ status_t BufferQueueProducer::queueBuffer(int slot,
+         mCallbackCondition.broadcast();
+     }
+ 
++#ifdef MTK_MT6589
++    mCore->debugger.onQueue(slot, timestamp);
++#endif
++
+     return NO_ERROR;
+ }
+ 
+@@ -728,6 +766,9 @@ void BufferQueueProducer::cancelBuffer(int slot, const sp<Fence>& fence) {
+     mSlots[slot].mFrameNumber = 0;
+     mSlots[slot].mFence = fence;
+     mCore->mDequeueCondition.broadcast();
++#ifdef MTK_MT6589
++    mCore->debugger.onCancel(slot);
++#endif
+ }
+ 
+ int BufferQueueProducer::query(int what, int *outValue) {
+@@ -781,8 +822,13 @@ status_t BufferQueueProducer::connect(const sp<IProducerListener>& listener,
+     ATRACE_CALL();
+     Mutex::Autolock lock(mCore->mMutex);
+     mConsumerName = mCore->mConsumerName;
++#ifdef MTK_MT6589
++    mCore->debugger.onProducerConnect(
++            listener->asBinder(), api, producerControlledByApp);
++#else
+     BQ_LOGV("connect(P): api=%d producerControlledByApp=%s", api,
+             producerControlledByApp ? "true" : "false");
++#endif
+ 
+     if (mCore->mIsAbandoned) {
+         BQ_LOGE("connect(P): BufferQueue has been abandoned");
+@@ -843,7 +889,13 @@ status_t BufferQueueProducer::connect(const sp<IProducerListener>& listener,
+ 
+ status_t BufferQueueProducer::disconnect(int api) {
+     ATRACE_CALL();
++#ifdef MTK_MT6589
++    // to reset pid of producer
++    mCore->debugger.onProducerDisconnect();
++    BQ_LOGI("disconnect(P): api %d", api);
++#else
+     BQ_LOGV("disconnect(P): api %d", api);
++#endif
+ 
+     int status = NO_ERROR;
+     sp<IConsumerListener> listener;
+diff --git a/libs/gui/ConsumerBase.cpp b/libs/gui/ConsumerBase.cpp
+index 210e98e..e280eb9 100644
+--- a/libs/gui/ConsumerBase.cpp
++++ b/libs/gui/ConsumerBase.cpp
+@@ -122,6 +122,12 @@ void ConsumerBase::onBuffersReleased() {
+         // Nothing to do if we're already abandoned.
+         return;
+     }
++/*
++#ifdef MTK_MT6589
++    // force conversion here for last buffer
++    forceAuxConversionLocked();
++#endif
++*/
+ 
+     uint64_t mask = 0;
+     mConsumer->getReleasedBuffers(&mask);
+diff --git a/libs/gui/GLConsumer.cpp b/libs/gui/GLConsumer.cpp
+index 778df4e..f79f94a 100644
+--- a/libs/gui/GLConsumer.cpp
++++ b/libs/gui/GLConsumer.cpp
+@@ -41,6 +41,15 @@
+ #include <utils/String8.h>
+ #include <utils/Trace.h>
+ 
++#ifdef MTK_MT6589
++#include <DpBlitStream.h>
++#define LOCK_FOR_DP (GRALLOC_USAGE_SW_READ_RARELY | GRALLOC_USAGE_SW_WRITE_NEVER | GRALLOC_USAGE_HW_TEXTURE)
++
++#include <cutils/xlog.h>
++#include <cutils/properties.h>
++#include <math.h>
++#endif
++
+ EGLAPI const char* eglQueryStringImplementationANDROID(EGLDisplay dpy, EGLint name);
+ #define CROP_EXT_STR "EGL_ANDROID_image_crop"
+ 
+@@ -144,6 +153,28 @@ GLConsumer::GLConsumer(const sp<IGraphicBufferConsumer>& bq, uint32_t tex,
+ #ifdef QCOM_BSP
+     mCurrentDirtyRect.clear();
+ #endif
++
++/*
++#ifdef MTK_MT6589
++
++    // init status for conversion
++    mAuxSlotConvert = false;
++    mAuxSlotDirty = false;
++    mBackAuxSlot = mAuxSlot;
++    mFrontAuxSlot = mAuxSlot + 1;
++
++    // drawing debug line
++    char value[PROPERTY_VALUE_MAX];
++    property_get("debug.st.line", value, "0");
++    mLine = (0 != atoi(value));
++    mLineCnt = 0;
++
++    if (true == mLine) {
++        ST_LOGI("switch on debug line");
++    }
++#endif
++*/
++
+ }
+ 
+ GLConsumer::GLConsumer(const sp<IGraphicBufferConsumer>& bq, uint32_t texTarget,
+@@ -215,6 +246,24 @@ status_t GLConsumer::updateTexImage() {
+             ST_LOGV("updateTexImage: no buffers were available");
+             glBindTexture(mTexTarget, mTexName);
+             err = NO_ERROR;
++
++/*
++#ifdef MTK_MT6589
++        // buffer conversion
++        mAuxSlotConvert = (checkPixelFormatSupported() == OK);
++        if (true == mAuxSlotConvert) {
++            // try conversion here
++            convertToAuxSlotLocked(false);
++        } else {
++            mAuxSlotDirty = false;
++        }
++
++        if (true == mAuxSlotDirty) {
++            // if converted into aux buffer, use aux buffer as texture
++            bindToAuxSlotLocked();
++        }
++#endif
++*/
+         } else {
+             ST_LOGE("updateTexImage: acquire failed: %s (%d)",
+                 strerror(-err), err);
+@@ -349,6 +398,7 @@ status_t GLConsumer::acquireBufferLocked(BufferQueue::BufferItem *item,
+         mEglSlots[slot].mEglImage = new EglImage(item->mGraphicBuffer);
+     }
+ 
++
+     return NO_ERROR;
+ }
+ 
+@@ -581,6 +631,14 @@ status_t GLConsumer::detachFromContext() {
+         glDeleteTextures(1, &mTexName);
+     }
+ 
++/*
++#ifdef MTK_MT6589
++    // also clear aux buffer
++    freeAuxSlotLocked(mAuxSlot[0]);
++    freeAuxSlotLocked(mAuxSlot[1]);
++#endif
++*/
++
+     mEglDisplay = EGL_NO_DISPLAY;
+     mEglContext = EGL_NO_CONTEXT;
+     mAttached = false;
+@@ -1009,6 +1067,13 @@ void GLConsumer::abandonLocked() {
+     ST_LOGV("abandonLocked");
+     mCurrentTextureImage.clear();
+     ConsumerBase::abandonLocked();
++/*
++#ifdef MTK_MT6589
++    // clear aux buffer
++    freeAuxSlotLocked(mAuxSlot[0]);
++    freeAuxSlotLocked(mAuxSlot[1]);
++#endif
++*/
+ }
+ 
+ void GLConsumer::setName(const String8& name) {
+@@ -1042,6 +1107,24 @@ void GLConsumer::dumpLocked(String8& result, const char* prefix) const
+        mCurrentCrop.top, mCurrentCrop.right, mCurrentCrop.bottom,
+        mCurrentTransform);
+ 
++/*
++#ifdef MTK_MT6589
++    // dump aux information
++    // currently 2 AUX, in RGBA format
++    uint32_t i;
++    sp<GraphicBuffer> gb;
++    for (i = 0; i < 2; i++) {
++        gb = mAuxSlot[i].slot.mGraphicBuffer;
++        if (gb != NULL) {
++            result.appendFormat(
++                "%s%s[%02d] gb:%p, %p [%4ux%4u:%4u,%3X]\n",
++                prefix, (mFrontAuxSlot == &(mAuxSlot[i])) ? ">" : " ",
++                i, gb.get(),
++                gb->handle, gb->width, gb->height, gb->stride, gb->format);
++        }
++    }
++#endif
++*/
+     ConsumerBase::dumpLocked(result, prefix);
+ }
+ 
+@@ -1155,4 +1238,357 @@ EGLImageKHR GLConsumer::EglImage::createImage(EGLDisplay dpy,
+     return image;
+ }
+ 
++/*
++#ifdef MTK_MT6589
++status_t GLConsumer::bindToAuxSlotLocked() {
++// blackrebel
++    status_t err = mEglSlots[slot].mEglImage->createIfNeeded(mEglDisplay, item.mCrop);
++    if (EGL_NO_IMAGE_KHR != err) {
++        AuxSlot *tmp = mBackAuxSlot;
++        mBackAuxSlot = mFrontAuxSlot;
++        mFrontAuxSlot = tmp;
++
++        glBindTexture(mTexTarget, mTexName);
++        glEGLImageTargetTexture2DOES(mTexTarget, (GLeglImageOES)mFrontAuxSlot->mEglImage);
++        // insert fence sync object just after new front texture applied
++        EGLSyncKHR eglFence = mFrontAuxSlot->eglSlot.mEglFence;
++        if (eglFence != EGL_NO_SYNC_KHR) {
++            XLOGI("[%s] fence sync already exists in mFrontAuxSlot:%p, destoryed it", __func__, mFrontAuxSlot);
++            eglDestroySyncKHR(mEglDisplay, eglFence);
++        }
++
++        eglFence = eglCreateSyncKHR(mEglDisplay, EGL_SYNC_FENCE_KHR, NULL);
++        if (eglFence == EGL_NO_SYNC_KHR) {
++            XLOGE("[%s] error creating fence: %#x", __func__, eglGetError());
++        }
++        glFlush();
++        mFrontAuxSlot->eglSlot.mEglFence = eglFence;
++    }
++    mAuxSlotDirty = false;
++
++    return NO_ERROR;
++}
++
++
++status_t GLConsumer::convertToAuxSlot(bool isForce) {
++    Mutex::Autolock l(mMutex);
++    return convertToAuxSlotLocked(isForce);
++}
++
++status_t GLConsumer::bindToAuxSlot() {
++    Mutex::Autolock l(mMutex);
++    return bindToAuxSlotLocked();
++}
++
++status_t GLConsumer::forceAuxConversionLocked() {
++    status_t err = NO_ERROR;
++    ST_LOGI("[%s] mCurrentTexture:%d, mCurrentBuf:%p",
++        __func__, mCurrentTexture, mCurrentTextureImage.get());
++
++    if ((mCurrentTextureImage != NULL) &&
++        (checkPixelFormatSupported(mCurrentTextureImage) == OK)) {
++        err = convertToAuxSlotLocked(true);
++    }
++
++    return err;
++}
++
++status_t GLConsumer::dumpAux() const {
++    Mutex::Autolock l(mMutex);
++
++    sp<GraphicBuffer> gb = mFrontAuxSlot->slot.mGraphicBuffer;
++    if (gb != NULL) {
++        String8 filename = String8::format("/data/SF_dump/AUX%d.RGBA", mTexName);
++        
++        status_t lockret;
++        uint8_t *ptr;
++
++        lockret = gb->lock(LOCK_FOR_SW, (void**)&ptr);        
++        if (NO_ERROR != lockret) {
++            ST_LOGE("[%s] buffer lock fail: %s (gb:%p, handle:%p)",
++                __func__, strerror(lockret), gb.get(), gb->handle);
++			return INVALID_OPERATION;
++        } else {
++            FILE *f = fopen(filename.string(), "wb");
++            fwrite(ptr, gb->stride * gb->height * 4, 1, f);
++            fclose(f);
++        }
++        gb->unlock();
++    }
++
++    return NO_ERROR;
++}
++#endif
++
++#ifdef MTK_MT6589
++
++status_t GLConsumer::checkPixelFormatSupported(
++    sp<GraphicBuffer> graphicBuffer) const {
++
++    if (graphicBuffer != NULL) {
++        PixelFormat format = graphicBuffer->format;
++        if ((HAL_PIXEL_FORMAT_I420 == format) ||
++            (HAL_PIXEL_FORMAT_NV12_BLK == format) ||
++            (HAL_PIXEL_FORMAT_NV12_BLK_FCM == format)) {
++            return OK;
++        }
++    }
++    return INVALID_OPERATION;
++}
++
++status_t GLConsumer::freeAuxSlotLocked(AuxSlot &bs) {
++//    if (EGL_NO_IMAGE_KHR != bs.eglSlot.mEglImage || bs.slot.mGraphicBuffer != NULL) {
++
++        // destroying fence sync
++        if (EGL_NO_SYNC_KHR != bs.eglSlot.mEglFence) {
++            eglDestroySyncKHR(mEglDisplay, bs.eglSlot.mEglFence);
++            bs.eglSlot.mEglFence = EGL_NO_SYNC_KHR;
++        }
++
++        XLOGI("[%s] this:%p", __func__, this);
++        XLOGD("    GraphicBuffer: gb=%p handle=%p", bs.slot.mGraphicBuffer.get(), bs.slot.mGraphicBuffer->handle);
++        XLOGD("    EGLImage: dpy=%p, img=%p", mEglDisplay, bs.eglSlot.mEglImage);
++
++        bs.slot.mGraphicBuffer = NULL;
++        eglDestroyImageKHR(mEglDisplay, bs.eglSlot.mEglImage);
++        bs.eglSlot.mEglImage = EGL_NO_IMAGE_KHR;
++//    }
++
++    return NO_ERROR;
++}
++
++// conversion function should format by format, chip by chip
++// currently the input is I420, YV12, and MTKYUV; the output is ABGR
++status_t GLConsumer::convertToAuxSlotLocked(bool isForce) {
++    // check invalid buffer
++    if (BufferQueue::INVALID_BUFFER_SLOT == mCurrentTexture) {
++        mAuxSlotConvert = false;
++        return INVALID_OPERATION;
++    }
++
++    ATRACE_CALL();
++
++    // 1) normal BufferQueue needs conversion now
++    // 2) SurfaceTextureLayer neesd conversion aftern HWC
++    bool isNeedConversionNow =
++        (BufferQueue::TYPE_BufferQueue == mBufferQueue->getType()) ||
++        ((true == isForce) && (BufferQueue::TYPE_SurfaceTextureLayer == mBufferQueue->getType()));
++
++    if (true == isNeedConversionNow) {
++        XLOGI("do convertToAuxSlot...");
++
++        Slot &src = mSlots[mCurrentTexture];
++        AuxSlot &dst = *mBackAuxSlot;
++
++        // fence sync here for buffer not used by G3D
++        EGLSyncKHR fence = mFrontAuxSlot->eglSlot.mEglFence;
++        if (fence != EGL_NO_SYNC_KHR) {
++            EGLint result = eglClientWaitSyncKHR(mEglDisplay, fence, 0, 1000000000);
++            if (result == EGL_FALSE) {
++                XLOGW("[%s] FAILED waiting for front fence: %#x, tearing risk", __func__, eglGetError());
++            } else if (result == EGL_TIMEOUT_EXPIRED_KHR) {
++                XLOGW("[%s] TIMEOUT waiting for front fence, tearing risk", __func__);
++            }
++            eglDestroySyncKHR(mEglDisplay, fence);
++            mFrontAuxSlot->eglSlot.mEglFence = EGL_NO_SYNC_KHR;
++        }
++
++        // source graphic buffer
++        sp<GraphicBuffer> sg = src.mGraphicBuffer;
++
++        // destination graphic buffer
++        sp<GraphicBuffer> dg = dst.slot.mGraphicBuffer;
++
++        // force to convert to ABGR8888
++        uint32_t hal_out_fmt = HAL_PIXEL_FORMAT_RGBA_8888;
++        DpColorFormat dp_out_fmt = eABGR8888;
++        int dst_bitperpixel = 32;
++
++        // free if current aux slot exist and not fit
++        if ((EGL_NO_IMAGE_KHR != dst.eglSlot.mEglImage && dg != NULL) &&
++            ((sg->width != dg->width) || (sg->height != dg->height) || (hal_out_fmt != (uint32_t)dg->format))) {
++
++            XLOGI("[%s] free old aux slot ", __func__);
++            XLOGI("    src[w:%d, h:%d, f:0x%x] dst[w:%d, h:%d, f:0x%x]",
++                sg->width, sg->height, sg->format,
++                dg->width, dg->height, dg->format);
++            XLOGI("    required format:0x%x", hal_out_fmt);
++
++            freeAuxSlotLocked(dst);
++        }
++
++        // create aux buffer if current is NULL
++        if ((EGL_NO_IMAGE_KHR == dst.eglSlot.mEglImage) && (dst.slot.mGraphicBuffer == NULL)) {
++            XLOGI("[%s] create dst buffer and image", __func__);
++
++            XLOGI("    before create new aux buffer: %p", dg.get());
++            dg = dst.slot.mGraphicBuffer = new GraphicBuffer(sg->width,
++                                                        sg->height,
++                                                        hal_out_fmt,
++                                                        sg->usage);
++            if ((dg == NULL) || (dg->handle == NULL)) {
++                XLOGE("    create aux GraphicBuffer FAILED");
++                freeAuxSlotLocked(dst);
++                return BAD_VALUE;
++            } else {
++                XLOGI("    [NEW AUX] gb=%p, handle=%p, w=%d, h=%d, s=%d, fmt=%d",
++                    dg.get(), dg->handle,
++                    dg->width, dg->height, dg->stride,
++                    dg->format);
++            }
++
++            dst.eglSlot.mEglImage = createImage(mEglDisplay, dg);
++            if (EGL_NO_IMAGE_KHR == dst.eglSlot.mEglImage) {
++                XLOGE("[%s] create aux eglImage FAILED", __func__);
++                freeAuxSlotLocked(dst);
++                return BAD_VALUE;
++            }
++
++            XLOGI("[%s] create aux slot success", __func__);
++            XLOGI("    src[w:%d, h:%d, f:0x%x], dst[w:%d, h:%d, f:0x%x]",
++                sg->width, sg->height, sg->format,
++                dg->width, dg->height, dg->format);
++        }
++
++        status_t lockret;
++        uint8_t *dst_yp;
++        bool is_use_ion = false;
++
++        lockret = dg->lock(LOCK_FOR_DP, (void**)&dst_yp);
++        if (NO_ERROR != lockret) {
++            XLOGE("[%s] buffer lock fail: %s", __func__, strerror(lockret));
++            return INVALID_OPERATION;
++        }
++
++        {
++            DpBlitStream bltStream;
++
++            unsigned int src_offset[2];
++            unsigned int src_size[3];
++
++            int src_stride = (sg->format != HAL_PIXEL_FORMAT_YV12) ? sg->width : sg->stride;
++            int src_size_luma = src_stride * sg->height;
++            int src_size_chroma = src_size_luma / 4;
++
++            // default set as YV12
++            DpColorFormat dp_in_fmt = eYUV_420_3P_YVU;
++            int plane_num = 3;
++
++            // set & register src buffer
++            switch (sg->format) {
++                case HAL_PIXEL_FORMAT_I420:
++                    plane_num = 3;
++                    src_offset[0] = src_size_luma;
++                    src_offset[1] = src_size_luma + src_size_chroma;
++                    src_size[0] = src_size_luma;
++                    src_size[1] = src_size_chroma;
++                    src_size[2] = src_size_chroma;
++                    dp_in_fmt = eYUV_420_3P;
++                    break;
++
++                case HAL_PIXEL_FORMAT_YV12:
++                    plane_num = 3;
++                    src_offset[0] = src_size_luma;
++                    src_offset[1] = src_size_luma + src_size_chroma;
++                    src_size[0] = src_size_luma;
++                    src_size[1] = src_size_chroma;
++                    src_size[2] = src_size_chroma;
++                    dp_in_fmt = eYUV_420_3P_YVU;
++                    break;
++
++                case HAL_PIXEL_FORMAT_NV12_BLK:
++                    plane_num = 2;
++                    src_offset[0] = src_size_luma;
++                    src_size[0] = src_size_luma;
++                    src_size[1] = src_size_chroma * 2;
++                    dp_in_fmt = eNV12_BLK;
++                    break;
++
++                case HAL_PIXEL_FORMAT_NV12_BLK_FCM:
++                    plane_num = 2;
++                    src_offset[0] = src_size_luma;
++                    src_size[0] = src_size_luma;
++                    src_size[1] = src_size_chroma * 2;
++                    dp_in_fmt = eNV12_BLK_FCM;
++                    break;
++
++                default:
++                    XLOGD("unexpected format for dp in:%d", sg->format);
++                    dg->unlock();
++                    return INVALID_OPERATION;
++            }
++
++#ifdef MTK_PQ_SUPPORT
++            bltStream.setTdshp(1);
++#endif
++
++            // set src buffer
++            int idx = 0;
++            int num = 0;
++            sg->getIonFd(&idx, &num);
++            if (num > 0 && sg->handle->data[idx] != -1) {
++                bltStream.setSrcBuffer(sg->handle->data[idx], src_size, plane_num);
++                is_use_ion = true;
++            } else {
++                uint8_t *src_yp;
++                lockret = sg->lock(LOCK_FOR_DP, (void**)&src_yp);
++                if (NO_ERROR != lockret) {
++                    XLOGE("[%s] buffer lock fail: %s", __func__, strerror(lockret));
++                    dg->unlock();
++                    return INVALID_OPERATION;
++                }
++
++                unsigned int src_addr[3];
++                src_addr[0] = (unsigned int)src_yp;
++                src_addr[1] = src_addr[0] + src_offset[0];
++                src_addr[2] = src_addr[0] + src_offset[1];
++                bltStream.setSrcBuffer((void**)src_addr, src_size, plane_num);
++            }
++
++            DpRect src_roi;
++            src_roi.x = 0;
++            src_roi.y = 0;
++            src_roi.w = sg->width;
++            src_roi.h = sg->height;
++
++            bltStream.setSrcConfig(src_stride, sg->height, dp_in_fmt,
++                                   eInterlace_None, &src_roi);
++
++            // set dst buffer
++            bltStream.setDstBuffer((void *)dst_yp, dg->stride * dg->height * dst_bitperpixel / 8);
++
++            DpRect dst_roi;
++            dst_roi.x = 0;
++            dst_roi.y = 0;
++            dst_roi.w = dg->width;
++            dst_roi.h = dg->height;
++
++            bltStream.setDstConfig(dg->stride, dg->height, dp_out_fmt,
++                                    eInterlace_None, &dst_roi);
++
++            if (!bltStream.invalidate()) {
++                XLOGE("DpBlitStream invalidate failed");
++                dg->unlock();
++                if (!is_use_ion) sg->unlock();
++                return INVALID_OPERATION;
++            }
++        }
++
++        dg->unlock();
++        if (!is_use_ion) sg->unlock();
++
++        mAuxSlotConvert = false;
++        mAuxSlotDirty = true;
++
++        // draw grey debug line to aux
++        if (true == mLine) {
++            BufferQueueD::DrawDebugLineToGraphicBuffer(dg, mLineCnt, 0x80);
++            mLineCnt += 1;
++        }
++    }
++
++    return NO_ERROR;
++}
++#endif
++*/
+ }; // namespace android
+diff --git a/libs/gui/IGraphicBufferConsumer.cpp b/libs/gui/IGraphicBufferConsumer.cpp
+index 590a25e..fa17755 100644
+--- a/libs/gui/IGraphicBufferConsumer.cpp
++++ b/libs/gui/IGraphicBufferConsumer.cpp
+@@ -411,7 +411,11 @@ class BpGraphicBufferConsumer : public BpInterface<IGraphicBufferConsumer>
+         data.writeString8(result);
+         data.writeString8(String8(prefix ? prefix : ""));
+         remote()->transact(DUMP, data, &reply);
++#ifdef MTK_MT6589
++        result = reply.readString8();
++#else
+         reply.readString8();
++#endif
+     }
+ };
+ 
+diff --git a/libs/gui/Surface.cpp b/libs/gui/Surface.cpp
+index 6e544cd..f896b5b 100644
+--- a/libs/gui/Surface.cpp
++++ b/libs/gui/Surface.cpp
+@@ -42,6 +42,16 @@
+ #include <gralloc_priv.h>
+ #endif
+ 
++#ifdef MTK_MT6589
++// FPS profiling
++#include <utils/CallStack.h>
++#include <cutils/xlog.h>
++#include <gui/BufferQueueCore.h>
++
++// buffer count water level
++#define ALARM_BUFFER_COUNT 9
++#endif
++
+ namespace android {
+ 
+ Surface::Surface(
+@@ -92,6 +102,11 @@ Surface::Surface(
+ #ifdef SURFACE_SKIP_FIRST_DEQUEUE
+     mDequeuedOnce = false;
+ #endif
++
++#ifdef MTK_MT659
++    mConnectedApi = BufferQueueCore::NO_CONNECTED_API;
++#endif
++
+ }
+ 
+ Surface::~Surface() {
+@@ -268,7 +283,12 @@ int Surface::dequeueBuffer(android_native_buffer_t** buffer, int* fenceFd) {
+         }
+     }
+ 
++#ifdef MTK_MT6589
++    // Google issue: binder transaction might be failed and get null fence
++    if (fence != NULL && fence->isValid()) {
++#else
+     if (fence->isValid()) {
++#endif
+         *fenceFd = fence->dup();
+         if (*fenceFd == -1) {
+             ALOGE("dequeueBuffer: error duping fence: %d", errno);
+@@ -335,6 +355,44 @@ int Surface::queueBuffer(android_native_buffer_t* buffer, int fenceFd) {
+     } else {
+         timestamp = mTimestamp;
+     }
++#ifdef MTK_MT6589
++    // get systime for MTK FPS check
++    int64_t systime;
++    if (mTimestamp == NATIVE_WINDOW_TIMESTAMP_AUTO) {
++        systime = timestamp;
++    } else {
++        systime = systemTime(SYSTEM_TIME_MONOTONIC);
++    }
++
++    // FPS info, for client side
++    if (true == mQueueFps.update(systime)) {
++        XLOGI("[STC::queueBuffer] (this:%p) fps:%.2f, dur:%.2f, max:%.2f, min:%.2f",
++            this,
++            mQueueFps.getFps(),
++            mQueueFps.getLastLogDuration() / 1e6,
++            mQueueFps.getMaxDuration() / 1e6,
++            mQueueFps.getMinDuration() / 1e6);
++    }
++
++    // check durarion between client queue calling, warn if excceeds (too late or fast)
++    nsecs_t duration = mQueueFps.getLastDuration();
++    if (NATIVE_WINDOW_API_MEDIA == mConnectedApi) {
++        if ((duration > ms2ns(50)) || (duration < ms2ns(16))) {
++            XLOGW("[STC::queueBuffer(Media)] this:%p, api:%d, abnormal interval:%.2f",
++                this, mConnectedApi, duration / 1e6);
++        }
++    } else if (NATIVE_WINDOW_API_CAMERA == mConnectedApi) {
++        if ((duration > ms2ns(40)) || (duration < ms2ns(16))) {
++            XLOGW("[STC::queueBuffer(Camera)] this:%p, api:%d, abnormal interval:%.2f",
++                this, mConnectedApi, duration / 1e6);
++        }
++    } else {
++        if (duration > ms2ns(5000)) {
++            XLOGI("[STC::queueBuffer] this:%p, api:%d, last queue time elapsed:%.2f",
++                this, mConnectedApi, duration / 1e6);
++        }
++    }
++#endif
+     int i = getSlotFromBufferLocked(buffer);
+     if (i < 0) {
+         return i;
+@@ -640,6 +698,17 @@ int Surface::connect(int api) {
+     if (!err && api == NATIVE_WINDOW_API_CPU) {
+         mConnectedToCpu = true;
+     }
++#ifdef MTK_MT6589
++    // 1. keep connection api type for FPS profiling
++    // 2. dump call stack if connect fail
++    if (!err) {
++        mConnectedApi = api;
++    } else {
++        CallStac2 stack;
++        stack.update();
++        stack.dump("STC::connect");
++    }
++#endif
+     return err;
+ }
+ 
+@@ -703,6 +772,16 @@ int Surface::setBufferCount(int bufferCount)
+     ALOGV("Surface::setBufferCount");
+     Mutex::Autolock lock(mMutex);
+ 
++#ifdef MTK_MT6589
++    // give warning message if set buffer count more than ALARM_BUFFER_COUNT
++    if (bufferCount > ALARM_BUFFER_COUNT) {
++        XLOGW("[STC::setBufferCount] set buffer count to %d", bufferCount);
++        CallStac2 stack;
++        stack.update();
++        stack.dump("[STC::setBufferCount]");
++    }
++#endif
++
+     status_t err = mGraphicBufferProducer->setBufferCount(bufferCount);
+     ALOGE_IF(err, "IGraphicBufferProducer::setBufferCount(%d) returned %s",
+             bufferCount, strerror(-err));
+diff --git a/libs/gui/SurfaceComposerClient.cpp b/libs/gui/SurfaceComposerClient.cpp
+index b6025f2..42377e5 100644
+--- a/libs/gui/SurfaceComposerClient.cpp
++++ b/libs/gui/SurfaceComposerClient.cpp
+@@ -187,6 +187,10 @@ class Composer : public Singleton<Composer>
+     static void closeGlobalTransaction(bool synchronous) {
+         Composer::getInstance().closeGlobalTransactionImpl(synchronous);
+     }
++#ifdef MTK_MT6589
++    status_t setFlagsEx(const sp<SurfaceComposerClient>& client, const sp<IBinder>& id,
++            uint32_t flags, uint32_t mask);
++#endif
+ };
+ 
+ ANDROID_SINGLETON_STATIC_INSTANCE(Composer);
+@@ -501,6 +505,22 @@ status_t Composer::setOrientation(int orientation) {
+ }
+ #endif
+ 
++#ifdef MTK_MT6589
++status_t Composer::setFlagsEx(const sp<SurfaceComposerClient>& client,
++        const sp<IBinder>& id, uint32_t flags,
++        uint32_t mask) {
++    Mutex::Autolock _l(mLock);
++    layer_state_t* s = getLayerStateLocked(client, id);
++    if (!s)
++        return BAD_INDEX;
++    s->what |= layer_state_t::eVisibilityChanged;
++    s->flagsEx &= ~mask;
++    s->flagsEx |= (flags & mask);
++    s->maskEx |= mask;
++    return NO_ERROR;
++}
++#endif
++
+ // ---------------------------------------------------------------------------
+ 
+ SurfaceComposerClient::SurfaceComposerClient()
+@@ -749,6 +769,12 @@ void SurfaceComposerClient::setDisplaySize(const sp<IBinder>& token,
+         uint32_t width, uint32_t height) {
+     Composer::getInstance().setDisplaySize(token, width, height);
+ }
++#ifdef MTK_MT6589
++status_t SurfaceComposerClient::setFlagsEx(const sp<IBinder>& id, uint32_t flags,
++        uint32_t mask) {
++    return getComposer().setFlagsEx(this, id, flags, mask);
++}
++#endif
+ 
+ // ----------------------------------------------------------------------------
+ 
+diff --git a/libs/gui/SurfaceControl.cpp b/libs/gui/SurfaceControl.cpp
+index 83847f9..f0b7708 100644
+--- a/libs/gui/SurfaceControl.cpp
++++ b/libs/gui/SurfaceControl.cpp
+@@ -220,6 +220,14 @@ sp<Surface> SurfaceControl::getSurface() const
+     }
+     return mSurfaceData;
+ }
++#ifdef MTK_MT6589
++status_t SurfaceControl::setFlagsEx(uint32_t flags, uint32_t mask) {
++    status_t err = validate();
++    if (err < 0) return err;
++    const sp<SurfaceComposerClient>& client(mClient);
++    return client->setFlagsEx(mHandle, flags, mask);
++}
++#endif
+ 
+ // ----------------------------------------------------------------------------
+ }; // namespace android
+diff --git a/libs/gui/mediatek/BufferQueueDebug.cpp b/libs/gui/mediatek/BufferQueueDebug.cpp
+new file mode 100644
+index 0000000..ff451f4
+--- /dev/null
++++ b/libs/gui/mediatek/BufferQueueDebug.cpp
+@@ -0,0 +1,320 @@
++#define LOG_TAG "BufferQueue"
++#define ATRACE_TAG ATRACE_TAG_GRAPHICS
++//#define LOG_NDEBUG 0
++
++#include <cmath>
++
++#include <cutils/properties.h>
++#include <cutils/xlog.h>
++#include <binder/IPCThreadState.h>
++
++//#include <ui/gralloc_extra.h>
++
++#include <gui/IGraphicBufferConsumer.h>
++#include <gui/BufferQueueCore.h>
++#include <gui/IConsumerListener.h>
++
++#include <gui/mediatek/BufferQueueDebug.h>
++#include <gui/mediatek/BufferQueueDump.h>
++#include <gui/mediatek/BufferQueueMonitor.h>
++#include <GraphicBufferUtil.h>
++
++#undef BQ_LOGV
++#undef BQ_LOGD
++#undef BQ_LOGI
++#undef BQ_LOGW
++#undef BQ_LOGE
++
++#define BQ_LOGV(x, ...) XLOGV("[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), mBq.unsafe_get(), mId, mConnectedApi, mProducerPid, mConsumerPid, ##__VA_ARGS__)
++#define BQ_LOGD(x, ...) XLOGD("[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), mBq.unsafe_get(), mId, mConnectedApi, mProducerPid, mConsumerPid, ##__VA_ARGS__)
++#define BQ_LOGI(x, ...) XLOGI("[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), mBq.unsafe_get(), mId, mConnectedApi, mProducerPid, mConsumerPid, ##__VA_ARGS__)
++#define BQ_LOGW(x, ...) XLOGW("[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), mBq.unsafe_get(), mId, mConnectedApi, mProducerPid, mConsumerPid, ##__VA_ARGS__)
++#define BQ_LOGE(x, ...) XLOGE("[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), mBq.unsafe_get(), mId, mConnectedApi, mProducerPid, mConsumerPid, ##__VA_ARGS__)
++
++#define BQP_LOGV(x, ...) XLOG_PRI(ANDROID_LOG_VORBOSE, "BufferQueueProducer", "[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), mBq.unsafe_get(), mId, mConnectedApi, mProducerPid, mConsumerPid, ##__VA_ARGS__)
++#define BQP_LOGD(x, ...) XLOG_PRI(ANDROID_LOG_DEBUG, "BufferQueueProducer", "[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), mBq.unsafe_get(), mId, mConnectedApi, mProducerPid, mConsumerPid, ##__VA_ARGS__)
++#define BQP_LOGI(x, ...) XLOG_PRI(ANDROID_LOG_INFO, "BufferQueueProducer", "[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), mBq.unsafe_get(), mId, mConnectedApi, mProducerPid, mConsumerPid, ##__VA_ARGS__)
++#define BQP_LOGW(x, ...) XLOG_PRI(ANDROID_LOG_WARNING, "BufferQueueProducer", "[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), mBq.unsafe_get(), mId, mConnectedApi, mProducerPid, mConsumerPid, ##__VA_ARGS__)
++#define BQP_LOGE(x, ...) XLOG_PRI(ANDROID_LOG_ERROR, "BufferQueueProducer", "[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), mBq.unsafe_get(), mId, mConnectedApi, mProducerPid, mConsumerPid, ##__VA_ARGS__)
++
++#define BQC_LOGV(x, ...) XLOG_PRI(ANDROID_LOG_VORBOSE, "BufferQueueConsumer", "[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), mBq.unsafe_get(), mId, mConnectedApi, mProducerPid, mConsumerPid, ##__VA_ARGS__)
++#define BQC_LOGD(x, ...) XLOG_PRI(ANDROID_LOG_DEBUG, "BufferQueueConsumer", "[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), mBq.unsafe_get(), mId, mConnectedApi, mProducerPid, mConsumerPid, ##__VA_ARGS__)
++#define BQC_LOGI(x, ...) XLOG_PRI(ANDROID_LOG_INFO, "BufferQueueConsumer", "[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), mBq.unsafe_get(), mId, mConnectedApi, mProducerPid, mConsumerPid, ##__VA_ARGS__)
++#define BQC_LOGW(x, ...) XLOG_PRI(ANDROID_LOG_WARNING, "BufferQueueConsumer", "[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), mBq.unsafe_get(), mId, mConnectedApi, mProducerPid, mConsumerPid, ##__VA_ARGS__)
++#define BQC_LOGE(x, ...) XLOG_PRI(ANDROID_LOG_ERROR, "BufferQueueConsumer", "[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), mBq.unsafe_get(), mId, mConnectedApi, mProducerPid, mConsumerPid, ##__VA_ARGS__)
++
++#define LOCK_FOR_SW (GRALLOC_USAGE_SW_READ_RARELY | GRALLOC_USAGE_SW_WRITE_RARELY | GRALLOC_USAGE_HW_TEXTURE)
++namespace android {
++// -----------------------------------------------------------------------------
++status_t drawDebugLineToGraphicBuffer(sp<GraphicBuffer> gb, uint32_t cnt, uint8_t val) {
++    if (gb == NULL) {
++        return INVALID_OPERATION;
++    }
++
++    status_t lockret;
++    uint8_t *ptr;
++
++    
++    lockret = gb->lock(LOCK_FOR_SW, (void**)&ptr);
++    if (NO_ERROR != lockret) {
++        XLOGE("[%s] buffer lock fail: %s (gb:%p, handle:%p)",
++            __func__, strerror(lockret), gb.get(), gb->handle);
++        return INVALID_OPERATION;
++    } else {
++        uint32_t bsize; // block size, will split intrested plane to 32 parts
++
++        cnt &= 0x1f;    // mod count by 32
++        switch (gb->format) {
++
++            // for 32bit format
++            case HAL_PIXEL_FORMAT_RGBA_8888:
++            case HAL_PIXEL_FORMAT_BGRA_8888:
++            case HAL_PIXEL_FORMAT_RGBX_8888:
++                bsize = (gb->stride * gb->height * 4) >> 5;
++                memset(ptr + (bsize * cnt), val, bsize);
++                break;
++
++            // for 16bits format
++            case HAL_PIXEL_FORMAT_RGB_565:
++                bsize = (gb->stride * gb->height * 2) >> 5;
++                memset(ptr + (bsize * cnt), val, bsize);
++                break;
++
++            // for general YUV format, draw Y plane only
++            case HAL_PIXEL_FORMAT_I420:
++            case HAL_PIXEL_FORMAT_NV12_BLK:
++            case HAL_PIXEL_FORMAT_NV12_BLK_FCM:
++            case HAL_PIXEL_FORMAT_YV12:
++                bsize = (gb->stride * gb->height) >> 5;
++                memset(ptr + (bsize * cnt), val, bsize);
++                break;
++
++            default:
++                XLOGE("[%s] unsupported format:%d", __func__, gb->format);
++        }
++    }
++    gb->unlock();
++
++    return NO_ERROR;
++}
++
++status_t getProcessName(int pid, String8& name) {
++    FILE *fp = fopen(String8::format("/proc/%d/cmdline", pid), "r");
++    if (NULL != fp) {
++        const size_t size = 64;
++        char proc_name[size];
++        fgets(proc_name, size, fp);
++        fclose(fp);
++
++        name = proc_name;
++        return NO_ERROR;
++    }
++
++    return INVALID_OPERATION;
++}
++
++BufferQueueDebug::BufferQueueDebug() :
++    mBq(NULL),
++    mId(-1),
++    mConnectedApi(BufferQueueCore::NO_CONNECTED_API),
++    mPid(-1),
++    mProducerPid(-1),
++    mConsumerPid(-1),
++    mIsInGuiExt(false),
++    mLine(false),
++    mLineCnt(0),
++    mDump(NULL),
++    mGeneralDump(false),
++    mScenarioLayerType(0)
++{
++}
++
++BufferQueueDebug::~BufferQueueDebug() {
++}
++
++// BufferQueueCore part
++// -----------------------------------------------------------------------------
++void BufferQueueDebug::onConstructor(
++        wp<BufferQueueCore> bq, const String8& consumerName) {
++    mBq = bq;
++    mPid = getpid();
++    mConsumerName = consumerName;
++    if (sscanf(consumerName.string(), "unnamed-%*d-%d", &mId) != 1) {
++        BQ_LOGE("id info cannot be read from '%s'", consumerName.string());
++    }
++
++    if (NO_ERROR == getProcessName(mPid, mConsumerProcName)) {
++        BQ_LOGI("BufferQueue core=(%d:%s)", mPid, mConsumerProcName.string());
++    } else {
++        BQ_LOGI("BufferQueue core=(%d:\?\?\?)", mPid);
++    }
++
++    mIsInGuiExt = (mConsumerProcName.find("guiext-server") != -1);
++    mDump = new BufferQueueDump(mIsInGuiExt ?
++            BufferQueueDump::TRACK_PRODUCER : BufferQueueDump::TRACK_CONSUMER, mBq.unsafe_get());
++
++    if (mDump == NULL) {
++        BQ_LOGE("new BufferQueueDump() failed in BufferQueue()");
++    }
++    // update dump name
++    mDump->setName(consumerName);
++
++    // check property for drawing debug line
++    char value[PROPERTY_VALUE_MAX];
++    property_get("debug.bq.line", value, "GOD'S IN HIS HEAVEN, ALL'S RIGHT WITH THE WORLD.");
++    mLine = (-1 != consumerName.find(value));
++    mLineCnt = 0;
++
++    if (true == mLine) {
++        BQ_LOGI("switch on debug line");
++    }
++
++    if (!mIsInGuiExt) {
++        BufferQueueMonitor::getInstance().monitor(mBq);
++    }
++}
++
++void BufferQueueDebug::onDestructor() {
++    BQ_LOGI("~BufferQueueCore");
++
++    if (!mIsInGuiExt) {
++        BufferQueueMonitor::getInstance().unmonitor(mBq);
++    }
++}
++
++void BufferQueueDebug::onDump(String8 &result, const String8& prefix) const {
++    mDump->dump(result, prefix.string());
++}
++
++void BufferQueueDebug::onFreeBufferLocked(const int slot) {
++    mDump->onFreeBuffer(slot);
++}
++
++// BufferQueueConsumer part
++// -----------------------------------------------------------------------------
++void BufferQueueDebug::onSetConsumerName(const String8& consumerName) {
++    mConsumerName = consumerName;
++    // update dump info
++    mDump->setName(mConsumerName);
++//    if (consumerName == String8("NavigationBar")) {
++//        mScenarioLayerType = GRALLOC_EXTRA_BIT2_LAYER_NAV;
++//    }
++
++    // check property for drawing debug line
++    BQC_LOGI("setConsumerName: %s", mConsumerName.string());
++    char value[PROPERTY_VALUE_MAX];
++    property_get("debug.bq.line", value, "GOD'S IN HIS HEAVEN, ALL'S RIGHT WITH THE WORLD.");
++    mLine = (-1 != mConsumerName.find(value));
++    mLineCnt = 0;
++
++    if (true == mLine) {
++        BQ_LOGI("switch on debug line");
++    }
++}
++
++void BufferQueueDebug::onAcquire(
++        const int buf,
++        const sp<GraphicBuffer>& gb,
++        const sp<Fence>& fence,
++        const int64_t timestamp,
++        const IGraphicBufferConsumer::BufferItem* const buffer) {
++    // also inform acquireBuffer to mDump
++    mDump->onAcquireBuffer(buf, gb, fence, timestamp);
++
++    // draw white debug line
++    if (true == mLine) {
++        if (buffer->mFence.get())
++            buffer->mFence->waitForever("BufferItemConsumer::acquireBuffer");
++
++        drawDebugLineToGraphicBuffer(gb, mLineCnt, 0xff);
++        mLineCnt += 1;
++    }
++}
++
++void BufferQueueDebug::onRelease(const int buf) {
++    // also inform releaseBuffer to mDump
++    mDump->onReleaseBuffer(buf);
++}
++
++void BufferQueueDebug::onConsumerConnect(
++        const sp<IConsumerListener>& consumerListener,
++        const bool controlledByApp) {
++    // check if local or remote connection by the consumer listener
++    // (in most cases, consumer side is a local connection)
++    mConsumerPid = (NULL != consumerListener->asBinder()->localBinder())
++                 ? getpid()
++                 : IPCThreadState::self()->getCallingPid();
++
++    String8 name;
++    if (NO_ERROR == getProcessName(mConsumerPid, mConsumerProcName)) {
++        BQC_LOGI("connect(C): consumer=(%d:%s) controlledByApp=%s",
++            mConsumerPid, mConsumerProcName.string(), controlledByApp ? "true" : "false");
++    } else {
++        BQC_LOGI("connect(C): consumer=(%d:\?\?\?) controlledByApp=%s",
++            mConsumerPid, controlledByApp ? "true" : "false");
++    }
++}
++
++void BufferQueueDebug::onConsumerDisconnectHead() {
++    mConsumerPid = -1;
++}
++
++void BufferQueueDebug::onConsumerDisconnectTail() {
++    mDump->onConsumerDisconnect();
++}
++
++// BufferQueueProducer part
++// -----------------------------------------------------------------------------
++//void BufferQueueDebug::setIonInfo(const sp<GraphicBuffer>& gb) {
++//#ifndef MTK_EMULATOR_SUPPORT
++//            char infoMsg[ION_MM_DBG_NAME_LEN];
++//            snprintf(infoMsg, sizeof(infoMsg), "p:%d c:%d", mProducerPid, mConsumerPid);
++//            gralloc_extra_setBufInfo(gb->handle, infoMsg);
++//#endif // MTK_EMULATOR_SUPPORT
++//}
++
++void BufferQueueDebug::onDequeue(
++        const int outBuf, sp<GraphicBuffer>& gb, sp<Fence>& fence) {
++    mDump->onDequeueBuffer(outBuf, gb, fence);
++}
++
++void BufferQueueDebug::onQueue(const int buf, const int64_t timestamp) {
++    // count FPS after queueBuffer() success, for producer side
++    if (true == mQueueFps.update()) {
++        BQP_LOGI("queueBuffer: fps=%.2f dur=%.2f max=%.2f min=%.2f",
++                mQueueFps.getFps(),
++                mQueueFps.getLastLogDuration() / 1e6,
++                mQueueFps.getMaxDuration() / 1e6,
++                mQueueFps.getMinDuration() / 1e6);
++    }
++
++    // also inform queueBuffer to mDump
++    mDump->onQueueBuffer(buf, timestamp);
++}
++
++void BufferQueueDebug::onCancel(const int buf) {
++    mDump->onCancelBuffer(buf);
++}
++
++void BufferQueueDebug::onProducerConnect(
++        const sp<IBinder>& token, const int api, bool producerControlledByApp) {
++    mProducerPid = (token != NULL && NULL != token->localBinder())
++        ? getpid()
++        : IPCThreadState::self()->getCallingPid();
++    mConnectedApi = api;
++
++    if (NO_ERROR == getProcessName(mProducerPid, mProducerProcName)) {
++        BQP_LOGI("connect(P): api=%d producer=(%d:%s) producerControlledByApp=%s", mConnectedApi,
++                mProducerPid, mProducerProcName.string(), producerControlledByApp ? "true" : "false");
++    } else {
++        BQP_LOGI("connect(P): api=%d producer=(%d:\?\?\?) producerControlledByApp=%s", mConnectedApi,
++                mProducerPid, producerControlledByApp ? "true" : "false");
++    }
++}
++
++void BufferQueueDebug::onProducerDisconnect() {
++    mProducerPid = -1;
++}
++
++// -----------------------------------------------------------------------------
++}; // namespace android
+diff --git a/libs/gui/mediatek/BufferQueueDump.cpp b/libs/gui/mediatek/BufferQueueDump.cpp
+new file mode 100644
+index 0000000..bb77ae8
+--- /dev/null
++++ b/libs/gui/mediatek/BufferQueueDump.cpp
+@@ -0,0 +1,583 @@
++#define LOG_TAG "BufferQueueDump"
++#define ATRACE_TAG ATRACE_TAG_GRAPHICS
++
++#include <sys/stat.h>
++
++#include <selinux/android.h>
++
++#include <gui/IGraphicBufferConsumer.h>
++#include <gui/BufferQueueCore.h>
++#include <cutils/xlog.h>
++#include <cutils/properties.h>
++
++// TODO: check whether emulator support GraphicBufferUtil
++#include <GraphicBufferUtil.h>
++
++#include <gui/mediatek/BufferQueueDump.h>
++
++// ----------------------------------------------------------------------------
++#define PROP_DUMP_NAME      "debug.bq.dump"
++#define DEFAULT_DUMP_NAME   "[none]"
++
++#define DUMP_FILE_PATH      "/data/SF_dump/"
++
++#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
++
++#define BQD_LOGV(x, ...) XLOGV("[%s] "x, mName.string(), ##__VA_ARGS__)
++#define BQD_LOGD(x, ...) XLOGD("[%s] "x, mName.string(), ##__VA_ARGS__)
++#define BQD_LOGI(x, ...) XLOGI("[%s] "x, mName.string(), ##__VA_ARGS__)
++#define BQD_LOGW(x, ...) XLOGW("[%s] "x, mName.string(), ##__VA_ARGS__)
++#define BQD_LOGE(x, ...) XLOGE("[%s] "x, mName.string(), ##__VA_ARGS__)
++
++
++namespace android {
++
++// ----------------------------------------------------------------------------
++BufferQueueDump::BufferQueueDump(const MODE& mode, const wp<BufferQueueCore>& bq) :
++        mName("unnamed BufferQueueDump"),
++        mBackupBufPusher(NULL),
++        mBackupBufDumper(NULL),
++        mIsBackupBufInited(false),
++        mMode(mode),
++        mBq(bq),
++        mIsRegistered(false),
++        mObtainedBufs(NULL),
++        mLastObtainedBuf(NULL),
++        mPid(getpid())
++{
++    mProcName = "\?\?\?";
++    FILE *fp = fopen(String8::format("/proc/%d/cmdline", mPid), "r");
++    if (NULL != fp) {
++        const size_t size = 64;
++        char proc_name[size];
++        fgets(proc_name, size, fp);
++        fclose(fp);
++
++        mProcName = proc_name;
++    }
++}
++
++void BufferQueueDump::setName(const String8& name) {
++    mName = name;
++
++    // update dumper's name
++    if (mBackupBufDumper != NULL) {
++        mBackupBufDumper->setName(name);
++    }
++
++    // check and reset current dump setting
++
++    char value[PROPERTY_VALUE_MAX];
++    property_get(PROP_DUMP_NAME, value, DEFAULT_DUMP_NAME);
++
++    uint32_t backupCnt = 0;
++    bool isMatched = parseDumpConfig(value, &backupCnt);
++    if (isMatched && strstr(value, "#") != NULL) {
++        setBackupCount(backupCnt);
++    }
++}
++
++void BufferQueueDump::setBackupCount(int32_t count) {
++    BQD_LOGV("setBackupCount: %d", count);
++    if (count > 0) {
++        // create backup buffer if needed
++        if (!mIsBackupBufInited) {
++            mBackupBufPusher = new BackupBufPusher(mBackupBuf);
++            mBackupBufDumper = new BackupBufDumper(mBackupBuf);
++            if ((mBackupBufPusher != NULL) && (mBackupBufDumper != NULL)) {
++                mBackupBufDumper->setName(mName);
++                sp< RingBuffer< sp<BackupBuffer> >::Pusher > proxyPusher = mBackupBufPusher;
++                sp< RingBuffer< sp<BackupBuffer> >::Dumper > proxyDumper = mBackupBufDumper;
++                mBackupBuf.setPusher(proxyPusher);
++                mBackupBuf.setDumper(proxyDumper);
++                mIsBackupBufInited = true;
++            } else {
++                mBackupBufPusher.clear();
++                mBackupBufDumper.clear();
++                count = 0;
++                BQD_LOGE("[%s] create Backup pusher or dumper failed", __func__);
++            }
++        }
++
++        // resize backup buffer
++        mBackupBuf.resize(count);
++    } else {
++        mBackupBuf.resize(0);
++    }
++}
++
++
++void BufferQueueDump::dumpObtainedBufs() {
++    String8 name;
++    const char* bufName = (TRACK_PRODUCER == mMode) ? "Dequeued" : "Acquired";
++    getDumpFileName(name, mName);
++    // dump acquired buffers
++    if (!mObtainedBufs.size()) {
++        // if no acquired buf, try to dump the last one kept
++        if (mLastObtainedBuf != NULL) {
++            String8 name_prefix = String8::format("[%s](LAST_ts%lld)",
++                    name.string(), ns2ms(mLastObtainedBuf->mTimeStamp));
++            mLastObtainedBuf->dump(name_prefix);
++
++            BQD_LOGD("[dump] LAYER, handle(%p)", mLastObtainedBuf->mGraphicBuffer->handle);
++        }
++    } else {
++        // dump acquired buf old to new
++        for (uint32_t i = 0; i < mObtainedBufs.size(); i++) {
++            const sp<DumpBuffer>& buffer = mObtainedBufs[i];
++            if (buffer->mGraphicBuffer != NULL) {
++                String8 name_prefix = String8::format("[%s](%s%02u_ts%lld)",
++                        name.string(), bufName, i, ns2ms(buffer->mTimeStamp));
++                buffer->dump(name_prefix);
++
++                BQD_LOGD("[dump] %s:%02u, handle(%p)", bufName, i, buffer->mGraphicBuffer->handle);
++            }
++        }
++    }
++}
++
++int BufferQueueDump::checkBackupCnt(char* str) {
++    BQD_LOGV("checkBackupCnt: str:%s", str);
++    int cnt = 0;
++    char *numberSign = strchr(str, '#');
++
++    if (!numberSign)
++        return cnt;
++    *numberSign = '\0';
++    cnt = atoi(numberSign + 1);
++    return cnt;
++}
++
++bool BufferQueueDump::matchProc(char* str) {
++    BQD_LOGV("matchProc: str:%s mConsumerProcName:%s(%d)", str, mProcName.string(), mPid);
++    char *pProc = strstr(str, "@@");
++    bool isMatched = false;
++
++    if (pProc) {
++        pProc += strlen("@@");
++        // matching process's name
++
++        // if pProc is equal to "", it means all process
++        if (strlen(pProc) == 0) {
++            return true;
++        }
++        int pid = atoi(pProc);
++        BQD_LOGV("pid:%d pProc:%s", pid, pProc);
++        return pid != 0 && pid == mPid ? true : false;
++    } else if ((pProc = strstr(str, "@")) != NULL) {
++        pProc += strlen("@");
++        // matching process's pid
++        return (!strlen(pProc) || strstr(mProcName, pProc)) ? true : false;
++    }
++    return false;
++}
++
++bool BufferQueueDump::matchCName(char* str) {
++    BQD_LOGV("matchName: str:%s mName:%s \n", str, mName.string());
++
++    return strstr(mName, str) != NULL ? true : false;
++}
++
++enum ACTION {
++    ACTION_NONE,
++    ACTION_INCLUDE,
++    ACTION_EXCLUDE
++};
++
++int BufferQueueDump::match(char* substr) {
++    // '^' means matching BufferQueue is excluded and others are included
++    // the semantic is ambiguous in '@@;^Frame' case
++    char* inversion = strchr(substr, '^');
++    //char* inversion = strlen(substr) > 0 && substr[0] == '^';
++    if (inversion) {
++        substr = inversion + 1;
++    }
++    bool isMatchProc = true;
++    char *atSign = strchr(substr, '@');
++    if (atSign) {
++        isMatchProc = matchProc(atSign);
++        BQD_LOGV("matchProc: %d", isMatchProc);
++        *atSign = '\0';
++    }
++    bool isMatchName = true;
++    if (strlen(substr)) {
++        isMatchName = matchCName(substr);
++        BQD_LOGV("matchCName: %d", isMatchName);
++    }
++    if (inversion) {
++        BQD_LOGV("match result:%d", !(isMatchProc && isMatchName) ? ACTION_INCLUDE : ACTION_EXCLUDE);
++        return !(isMatchProc && isMatchName) ? ACTION_INCLUDE : ACTION_EXCLUDE;
++    } else {
++        BQD_LOGV("match result:%d", isMatchProc && isMatchName ? ACTION_INCLUDE : ACTION_NONE);
++        return isMatchProc && isMatchName ? ACTION_INCLUDE : ACTION_NONE;
++    }
++}
++
++bool BufferQueueDump::parseDumpConfig(const char* value, uint32_t* pBackupCnt) {
++    if (!value || !pBackupCnt) {
++        BQD_LOGE("invalid value:%p pBackupCnt:%p", value, pBackupCnt);
++        return false;
++    }
++
++    bool isMatched = false;
++    bool isSetting = (strchr(value, '#') != NULL);
++    *pBackupCnt = 0;
++
++    // should not modify value, so backup value
++    char str[PROPERTY_VALUE_MAX] = "";
++    const uint32_t strSize = PROPERTY_VALUE_MAX - 1 < strlen(value) ? PROPERTY_VALUE_MAX - 1 : strlen(value);
++    memmove(str, value, strSize);
++    str[strSize] = '\0';
++
++    // split str into substrs
++    Vector<char*> substrs;
++    substrs.push(str);
++    const char* delimiter = ";";
++    char *substr = strtok(str, delimiter);
++    while (substr) {
++        substrs.push(substr);
++        substr = strtok(NULL, delimiter);
++    }
++
++    // start matching from tail
++    // because the latter rule will override the former
++    BQD_LOGV("parse str:%s", value);
++    for (int32_t i = substrs.size() - 1; i >= 0; --i) {
++        BQD_LOGV("parse substr:%s", substrs[i]);
++        // check invalid rules
++        char *numSign = strchr(substrs[i], '#');
++        if ((numSign && !(numSign - substrs[i])) ||
++                !strlen(substrs[i]) ||
++                strchr(substrs[i], ' ')) {
++            BQD_LOGW("invalid matching rules");
++            continue;
++        }
++        uint32_t tmpBackupCnt = checkBackupCnt(substrs[i]);
++
++        int matchResult = match(substrs[i]);
++        if (isSetting) {
++            if (matchResult == ACTION_INCLUDE) {
++                isMatched = true;
++                *pBackupCnt = tmpBackupCnt;
++                break;
++            }
++        } else {
++            if (matchResult != ACTION_NONE) {
++                isMatched = (matchResult == ACTION_INCLUDE) ? true : false;
++                break;
++            }
++        }
++    }
++    BQD_LOGV("parse * isMatched:%d backupCnt:%d", isMatched, *pBackupCnt);
++
++    return isMatched;
++}
++
++
++void BufferQueueDump::dump(String8& result, const char* prefix) {
++    // dump status to log buffer first
++    const char* bufName = (TRACK_PRODUCER == mMode) ? "Dequeued" : "Acquired";
++
++    result.appendFormat("%s*BufferQueueDump mIsBackupBufInited=%d, m%sBufs(size=%d), mMode=%s\n",
++            prefix, mIsBackupBufInited, bufName, mObtainedBufs.size(),
++            (TRACK_PRODUCER == mMode) ? "TRACK_PRODUCER" : "TRACK_CONSUMER");
++
++    if ((mLastObtainedBuf != NULL) && (mLastObtainedBuf->mGraphicBuffer != NULL)) {
++        result.appendFormat("%s [-1] mLast%sBuf->mGraphicBuffer->handle=%p\n",
++                prefix, bufName, mLastObtainedBuf->mGraphicBuffer->handle);
++    }
++
++    for (size_t i = 0; i < mObtainedBufs.size(); i++) {
++        const sp<DumpBuffer>& buffer = mObtainedBufs[i];
++        result.appendFormat("%s [%02u] handle=%p, fence=%p, time=%#llx\n",
++            prefix, i, buffer->mGraphicBuffer->handle, buffer->mFence.get(), buffer->mTimeStamp);
++    }
++
++    // start buffer dump check and process
++    char value[PROPERTY_VALUE_MAX];
++    property_get(PROP_DUMP_NAME, value, DEFAULT_DUMP_NAME);
++    if (strcmp(value, DEFAULT_DUMP_NAME) == 0 || strlen(value) == 0) {
++        // debug feature (bqdump) is not enabled
++        return;
++    }
++
++    // For aee manual dump, we must create a directory to save files.
++    // The step should not be completed by a script.
++    struct stat sb;
++    if (stat(DUMP_FILE_PATH, &sb) != 0) {
++        // ths permission of /data/SF_dump must be 777,
++        // or some processes cannot save files to /data/SF_dump
++        mode_t mode = umask(0);
++        if (mkdir(DUMP_FILE_PATH, 0777) != 0) {
++            BQD_LOGE("mkdir(%s) failed", DUMP_FILE_PATH);
++        }
++        umask(mode);
++        if (selinux_android_restorecon(DUMP_FILE_PATH, 0) == -1) {
++            BQD_LOGE("restorecon failed(%s) failed", DUMP_FILE_PATH);
++        } else {
++            BQD_LOGV("restorecon(%s)", DUMP_FILE_PATH);
++        }
++    }
++    if (access(DUMP_FILE_PATH, R_OK | W_OK | X_OK) != 0) {
++        BQD_LOGE("The permission of %s cannot be access by this process", DUMP_FILE_PATH);
++    }
++
++    uint32_t backupCnt = 0;
++    bool isMatched = parseDumpConfig(value, &backupCnt);
++
++    // if value contains '#', it means setting continues dump
++    // otherwise, dump buffers
++    if (strchr(value, '#') != NULL) {
++        if (isMatched) {
++            setBackupCount(backupCnt);
++        }
++    } else {
++        if (isMatched) {
++            if (mBackupBuf.getSize() > 0) {
++                mBackupBuf.dump(result, prefix);
++            }
++            dumpObtainedBufs();
++        }
++    }
++}
++
++void BufferQueueDump::getDumpFileName(String8& fileName, const String8& name) {
++    fileName = name;
++
++    // check file name, filter out invalid chars
++    const char invalidChar[] = {'\\', '/', ':', '*', '?', '"', '<', '>', '|'};
++    size_t size = fileName.size();
++    char *buf = fileName.lockBuffer(size);
++    for (unsigned int i = 0; i < ARRAY_SIZE(invalidChar); i++) {
++        for (size_t c = 0; c < size; c++) {
++            if (buf[c] == invalidChar[i]) {
++                // find invalid char, replace it with '_'
++                buf[c] = '_';
++            }
++        }
++    }
++    fileName.unlockBuffer(size);
++}
++
++void BufferQueueDump::addBuffer(const int& slot,
++                                const sp<GraphicBuffer>& buffer,
++                                const sp<Fence>& fence,
++                                const int64_t& timestamp) {
++    if (buffer == NULL) {
++        return;
++    }
++
++    sp<DumpBuffer> v = mObtainedBufs.valueFor(slot);
++    if (v == NULL) {
++        sp<DumpBuffer> b = new DumpBuffer(buffer, fence, timestamp);
++        mObtainedBufs.add(slot, b);
++        mLastObtainedBuf = NULL;
++    } else {
++        BQD_LOGW("[%s] slot(%d) acquired, seems to be abnormal, just update ...", __func__, slot);
++        v->mGraphicBuffer = buffer;
++        v->mFence = fence;
++        v->mTimeStamp = timestamp;
++    }
++}
++
++void BufferQueueDump::updateBuffer(const int& slot, const int64_t& timestamp) {
++    if (mBackupBuf.getSize() > 0) {
++        const sp<DumpBuffer>& v = mObtainedBufs.valueFor(slot);
++        if (v != NULL) {
++            // push GraphicBuffer into backup buffer if buffer ever Acquired
++            sp<BackupBuffer> buffer = NULL;
++            if (timestamp != -1)
++                buffer = new BackupBuffer(v->mGraphicBuffer, timestamp);
++            else
++                buffer = new BackupBuffer(v->mGraphicBuffer, v->mTimeStamp);
++            mBackupBuf.push(buffer);
++        }
++    }
++
++    // keep for the last one before removed
++    if (1 == mObtainedBufs.size()) {
++        if (timestamp != -1)
++            mObtainedBufs[0]->mTimeStamp = timestamp;
++
++        mLastObtainedBuf = mObtainedBufs[0];
++    }
++    mObtainedBufs.removeItem(slot);
++}
++
++void BufferQueueDump::onAcquireBuffer(const int& slot,
++                                      const sp<GraphicBuffer>& buffer,
++                                      const sp<Fence>& fence,
++                                      const int64_t& timestamp) {
++    if (TRACK_CONSUMER == mMode) {
++        addBuffer(slot, buffer, fence, timestamp);
++    }
++}
++
++void BufferQueueDump::onReleaseBuffer(const int& slot) {
++    if (TRACK_CONSUMER == mMode)
++        updateBuffer(slot);
++}
++
++void BufferQueueDump::onFreeBuffer(const int& slot) {
++    if (TRACK_CONSUMER == mMode)
++        updateBuffer(slot);
++}
++
++void BufferQueueDump::onDequeueBuffer(const int& slot,
++                                      const sp<GraphicBuffer>& buffer,
++                                      const sp<Fence>& fence) {
++    if (TRACK_PRODUCER == mMode)
++        addBuffer(slot, buffer, fence);
++}
++
++void BufferQueueDump::onQueueBuffer(const int& slot, const int64_t& timestamp) {
++    if (TRACK_PRODUCER == mMode)
++        updateBuffer(slot, timestamp);
++}
++
++void BufferQueueDump::onCancelBuffer(const int& slot) {
++    if (TRACK_PRODUCER == mMode)
++        updateBuffer(slot);
++}
++
++
++void BufferQueueDump::onConsumerDisconnect() {
++    mName += "(consumer disconnected)";
++
++    mBackupBuf.resize(0);
++    mBackupBufPusher = NULL;
++    mBackupBufDumper = NULL;
++    mIsBackupBufInited = false;
++
++    mObtainedBufs.clear();
++    mLastObtainedBuf = NULL;
++}
++
++status_t BufferQueueDump::kickDump(String8& result, const char* prefix) {
++    sp<BufferQueueCore> bq = mBq.promote();
++    if (bq != NULL) {
++        bq->dump(result, prefix);
++        return NO_ERROR;
++    } else {
++        XLOGE("kickDump() failed because BufferQueue(%p) is dead", mBq.unsafe_get());
++        return DEAD_OBJECT;
++    }
++}
++// ----------------------------------------------------------------------------
++
++bool BackupBufPusher::push(const sp<BackupBuffer>& in) {
++    if ((in == NULL) || (in->mGraphicBuffer == NULL)) {
++        return false;
++    }
++
++    sp<BackupBuffer>& buffer = editHead();
++
++    // check property of GraphicBuffer, realloc if needed
++    bool needCreate = false;
++    if ((buffer == NULL) || (buffer->mGraphicBuffer == NULL)) {
++        needCreate = true;
++    } else {
++        if ((buffer->mGraphicBuffer->width != in->mGraphicBuffer->width) ||
++            (buffer->mGraphicBuffer->height != in->mGraphicBuffer->height) ||
++            (buffer->mGraphicBuffer->format != in->mGraphicBuffer->format)) {
++            needCreate = true;
++            XLOGD("[%s] geometry changed, backup=(%d, %d, %d) => active=(%d, %d, %d)",
++                __func__, buffer->mGraphicBuffer->width, buffer->mGraphicBuffer->height,
++                buffer->mGraphicBuffer->format, in->mGraphicBuffer->width,
++                in->mGraphicBuffer->height, in->mGraphicBuffer->format);
++        }
++    }
++
++    if (needCreate) {
++        sp<GraphicBuffer> newGraphicBuffer = new GraphicBuffer(
++                                             in->mGraphicBuffer->width, in->mGraphicBuffer->height,
++                                             in->mGraphicBuffer->format, in->mGraphicBuffer->usage);
++        if (newGraphicBuffer == NULL) {
++            XLOGE("[%s] alloc GraphicBuffer failed", __func__);
++            return false;
++        }
++
++        if (buffer == NULL) {
++            buffer = new BackupBuffer();
++            if (buffer == NULL) {
++                XLOGE("[%s] alloc BackupBuffer failed", __func__);
++                return false;
++            }
++        }
++
++        buffer->mGraphicBuffer = newGraphicBuffer;
++    }
++
++    int width = in->mGraphicBuffer->width;
++    int height = in->mGraphicBuffer->height;
++    int format = in->mGraphicBuffer->format;
++    int usage = in->mGraphicBuffer->usage;
++    int stride = in->mGraphicBuffer->stride;
++
++    uint32_t bits = getGraphicBufferUtil().getBitsPerPixel(format);
++    status_t err;
++
++    // backup
++    void *src;
++    void *dst;
++    err = in->mGraphicBuffer->lock(GraphicBuffer::USAGE_SW_READ_OFTEN, &src);
++    if (err != NO_ERROR) {
++        XLOGE("[%s] lock GraphicBuffer failed", __func__);
++        return false;
++    }
++
++    err = buffer->mGraphicBuffer->lock(GraphicBuffer::USAGE_SW_READ_OFTEN | GraphicBuffer::USAGE_SW_WRITE_OFTEN, &dst);
++    if (err != NO_ERROR) {
++        in->mGraphicBuffer->unlock();
++        XLOGE("[%s] lock backup buffer failed", __func__);
++        return false;
++    }
++
++    memcpy(dst, src, (stride * height * bits) >> 3);
++
++    buffer->mGraphicBuffer->unlock();
++    in->mGraphicBuffer->unlock();
++
++    // update timestamp
++    buffer->mTimeStamp = in->mTimeStamp;
++    buffer->mSourceHandle = in->mGraphicBuffer->handle;
++
++    return true;
++}
++
++// ----------------------------------------------------------------------------
++void BackupBufDumper::dump(String8 &result, const char* prefix) {
++    // dump status to log buffer first
++    result.appendFormat("%s*BackupBufDumper mRingBuffer(size=%u, count=%u)\n",
++        prefix, mRingBuffer.getSize(), mRingBuffer.getCount());
++
++    for (size_t i = 0; i < mRingBuffer.getValidSize(); i++) {
++        const sp<BackupBuffer>& buffer = getItem(i);
++        result.appendFormat("%s [%02u] handle(source=%p, backup=%p)\n",
++            prefix, i, buffer->mSourceHandle, buffer->mGraphicBuffer->handle);
++    }
++
++    // start buffer dump check and process
++    String8 name;
++    String8 name_prefix;
++
++    BufferQueueDump::getDumpFileName(name, mName);
++
++    for (size_t i = 0; i < mRingBuffer.getValidSize(); i++) {
++        const sp<BackupBuffer>& buffer = getItem(i);
++        name_prefix = String8::format("[%s](Backup%02u_H%p_ts%" PRId64 ")",
++                                      name.string(), i, buffer->mSourceHandle, ns2ms(buffer->mTimeStamp));
++        getGraphicBufferUtil().dump(buffer->mGraphicBuffer, name_prefix.string(), DUMP_FILE_PATH);
++
++        BQD_LOGI("[dump] Backup:%02u, handle(source=%p, backup=%p)",
++            i, buffer->mSourceHandle, buffer->mGraphicBuffer->handle);
++    }
++}
++// ----------------------------------------------------------------------------
++void DumpBuffer::dump(const String8& prefix) {
++    if (mFence != NULL) {
++        mFence->waitForever(__func__);
++    }
++    getGraphicBufferUtil().dump(mGraphicBuffer, prefix.string(), DUMP_FILE_PATH);
++}
++}
+diff --git a/libs/gui/mediatek/BufferQueueMonitor.cpp b/libs/gui/mediatek/BufferQueueMonitor.cpp
+new file mode 100644
+index 0000000..d72abc5
+--- /dev/null
++++ b/libs/gui/mediatek/BufferQueueMonitor.cpp
+@@ -0,0 +1,130 @@
++#define LOG_TAG "BufferQueueMonitor"
++#define ATRACE_TAG ATRACE_TAG_GRAPHICS
++
++#include <cutils/xlog.h>
++#include <cutils/process_name.h>
++#include <gui/BufferQueueCore.h>
++#include <gui/mediatek/BufferQueueMonitor.h>
++
++#define BQM_LOGV(x, ...) XLOGV("[BufferQueueMonitor] "x, ##__VA_ARGS__)
++#define BQM_LOGD(x, ...) XLOGD("[BufferQueueMonitor] "x, ##__VA_ARGS__)
++#define BQM_LOGI(x, ...) XLOGI("[BufferQueueMonitor] "x, ##__VA_ARGS__)
++#define BQM_LOGW(x, ...) XLOGW("[BufferQueueMonitor] "x, ##__VA_ARGS__)
++#define BQM_LOGE(x, ...) XLOGE("[BufferQueueMonitor] "x, ##__VA_ARGS__)
++
++namespace android {
++
++// -----------------------------------------------------------------------------
++// BufferQueueMonitor part
++// -----------------------------------------------------------------------------
++ANDROID_SINGLETON_STATIC_INSTANCE(BufferQueueMonitor)
++
++BufferQueueMonitor::BufferQueueMonitor()
++    : mIsRegistered(false)
++{
++    getProcessName();
++}
++
++BufferQueueMonitor::~BufferQueueMonitor()
++{
++    Mutex::Autolock _l(mMutex);
++
++    if (mIsRegistered)
++    {
++        DumpTunnelHelper::getInstance().unregDump(
++                String8::format("BQM-[%d:%s]", getpid(), mProcessName.string()));
++        mIsRegistered = false; 
++    }
++}
++
++status_t BufferQueueMonitor::monitor(wp<BufferQueueCore> pBq)
++{
++    Mutex::Autolock _l(mMutex);
++    
++    mBqList.add(pBq, 0);
++    if (!mIsRegistered)
++    {
++        mBqDumpTunnel = new BufferQueueDumpTunnel(this);
++        if (DumpTunnelHelper::getInstance().regDump(
++                mBqDumpTunnel, String8::format("BQM-[%d:%s]", getpid(), mProcessName.string())))
++        {
++            mIsRegistered = true;
++        }
++    }
++    return NO_ERROR;
++}
++
++status_t BufferQueueMonitor::unmonitor(wp<BufferQueueCore> pBq)
++{
++    Mutex::Autolock _l(mMutex);
++
++    mBqList.removeItem(pBq);
++    return NO_ERROR;
++}
++
++status_t BufferQueueMonitor::dump(String8& result, const char* prefix)
++{
++    int listSz;
++    wp<BufferQueueCore> pBq;
++
++    Mutex::Autolock _l(mMutex);
++
++    listSz = mBqList.size();
++    result.appendFormat("\t  [%p]    BufferQueueCnt : %d\n", this, listSz);
++    result.append("\t  -----------------------\n");
++
++    for (int i = 0; i < listSz; i++)
++    {
++        pBq = mBqList.keyAt(i);
++        sp<BufferQueueCore> bq = pBq.promote();
++        if (bq != NULL)
++        {
++            result.appendFormat("           %d)\n",i+1);
++            bq->dump(result, "            ");
++        }
++        else
++        {
++            BQM_LOGI("kickDump() failed because BufferQueue(%p) is dead", pBq.unsafe_get());
++        }
++    }
++
++    result.append("\t  -----------------------\n");
++    return NO_ERROR;
++}
++status_t BufferQueueMonitor::getProcessName()
++{
++    int pid = getpid();
++    FILE *fp = fopen(String8::format("/proc/%d/cmdline", pid), "r");
++    if (NULL != fp)
++    {
++        const size_t size = 64;
++        char proc_name[size];
++        fgets(proc_name, size, fp);
++        fclose(fp);
++        mProcessName = proc_name;
++    }
++    else
++    {
++        mProcessName = "unknownProcess";
++    }
++    return NO_ERROR;
++}
++
++// -----------------------------------------------------------------------------
++// BufferQueueDumpTunnel part
++// -----------------------------------------------------------------------------
++BufferQueueDumpTunnel::BufferQueueDumpTunnel(BufferQueueMonitor* pMonitor)
++    : mMonitor(pMonitor)
++{
++}
++
++BufferQueueDumpTunnel::~BufferQueueDumpTunnel()
++{
++}
++
++status_t BufferQueueDumpTunnel::kickDump(String8& result, const char* prefix)
++{
++    return mMonitor->dump(result, prefix);
++}
++
++}; // namespace android
+diff --git a/libs/gui/mediatek/FpsCounter.cpp b/libs/gui/mediatek/FpsCounter.cpp
+new file mode 100644
+index 0000000..70cec98
+--- /dev/null
++++ b/libs/gui/mediatek/FpsCounter.cpp
+@@ -0,0 +1,86 @@
++#include <stdint.h>
++#include <errno.h>
++#include <sys/types.h>
++#include <sys/stat.h>
++
++#include <utils/CallStack.h>
++#include <utils/Errors.h>
++#include <utils/Log.h>
++#include <utils/threads.h>
++
++#include <gui/mediatek/FpsCounter.h>
++
++#include <cutils/properties.h>
++
++namespace android {
++
++//--------------------------------------------------------------------------------------------------
++bool FpsCounter::reset() {
++    mFps = 0.0;
++
++    mMaxDuration = -1;
++    mMinDuration = -1;
++    mMaxDurationCounting = -1;
++    mMinDurationCounting = -1;
++
++    mFrames = 0;
++    mLastLogTime = -1;
++    mLastLogDuration = -1;
++
++    mLastTime = -1;
++    mLastDuration = -1;
++
++    // read property as default log interval setting
++    char value[PROPERTY_VALUE_MAX];
++    property_get("debug.sf.stc_interval", value, "1000");
++    mCountInterval = ms2ns(atoi(value));
++
++    return true;
++}
++
++bool FpsCounter::update() {
++    return update(systemTime(SYSTEM_TIME_MONOTONIC));
++}
++
++bool FpsCounter::update(nsecs_t timestamp) {
++    if ((-1 == mLastLogTime) || (-1 == mLastTime) || (mLastTime >= timestamp)) {
++        mLastLogTime = mLastTime = timestamp;
++        return false;
++    }
++
++    mFrames++;
++
++    // count duration from last time update
++    mLastDuration = timestamp - mLastTime;
++    mLastTime = timestamp;
++    if ((-1 == mMaxDurationCounting) || (mLastDuration > mMaxDurationCounting)) {
++        mMaxDurationCounting = mLastDuration;
++    }
++    if ((-1 == mMinDurationCounting) || (mLastDuration < mMinDurationCounting)) {
++        mMinDurationCounting = mLastDuration;
++    }
++
++    // check if reach statistics interval, print result and reset for next
++    nsecs_t duration = timestamp - mLastLogTime;
++    if (duration > mCountInterval) {
++
++        // update data for FPS result
++        mFps = mFrames * 1e9 / duration;
++        mLastLogDuration = duration;
++        mMaxDuration = mMaxDurationCounting;
++        mMinDuration = mMinDurationCounting;
++
++        // reset counting data for next
++        mFrames = 0;
++        mLastLogTime = timestamp;
++        mMaxDurationCounting = -1;
++        mMinDurationCounting = -1;
++
++        return true;
++    }
++
++    return false;
++}
++
++// ----------------------------------------------------------------------------
++}; // namespace android
+diff --git a/libs/ui/Android.mk b/libs/ui/Android.mk
+index 2991671..52b3525 100644
+--- a/libs/ui/Android.mk
++++ b/libs/ui/Android.mk
+@@ -34,6 +34,15 @@ LOCAL_SHARED_LIBRARIES := \
+ 	libutils \
+ 	liblog
+ 
++	LOCAL_SRC_FILES += \
++		mediatek/Fence.cpp \
++		mediatek/IDumpTunnel.cpp \
++		mediatek/RefBaseDump.cpp
++
++LOCAL_SHARED_LIBRARIES += \
++	libbinder \
++	libdl
++	
+ ifneq ($(BOARD_FRAMEBUFFER_FORCE_FORMAT),)
+ LOCAL_CFLAGS += -DFRAMEBUFFER_FORCE_FORMAT=$(BOARD_FRAMEBUFFER_FORCE_FORMAT)
+ endif
+@@ -42,6 +51,10 @@ ifeq ($(BOARD_HAVE_PIXEL_FORMAT_INFO),true)
+ LOCAL_CFLAGS += -DHAVE_PIXEL_FORMAT_INFO
+ endif
+ 
++ifeq ($(TARGET_BOARD_PLATFORM),mt6589)
++LOCAL_CFLAGS += -DMTK_MT6589
++endif
++
+ LOCAL_MODULE:= libui
+ 
+ include $(BUILD_SHARED_LIBRARY)
+diff --git a/libs/ui/Fence.cpp b/libs/ui/Fence.cpp
+index 3c0306c..242f704 100644
+--- a/libs/ui/Fence.cpp
++++ b/libs/ui/Fence.cpp
+@@ -64,6 +64,9 @@ status_t Fence::waitForever(const char* logname) {
+     if (err < 0 && errno == ETIME) {
+         ALOGE("%s: fence %d didn't signal in %u ms", logname, mFenceFd,
+                 warningTimeout);
++#ifdef MTK_MT6589
++        dump(mFenceFd);
++#endif
+         err = sync_wait(mFenceFd, TIMEOUT_NEVER);
+     }
+     return err < 0 ? -errno : status_t(NO_ERROR);
+diff --git a/libs/ui/GraphicBuffer.cpp b/libs/ui/GraphicBuffer.cpp
+index 4c46deb..46df75b 100644
+--- a/libs/ui/GraphicBuffer.cpp
++++ b/libs/ui/GraphicBuffer.cpp
+@@ -28,6 +28,10 @@
+ #include <ui/GraphicBufferMapper.h>
+ #include <ui/PixelFormat.h>
+ 
++#ifdef MTK_MT6589
++#define LOCK_FOR_VA (GRALLOC_USAGE_SW_READ_RARELY | GRALLOC_USAGE_SW_WRITE_NEVER | GRALLOC_USAGE_HW_TEXTURE)
++#endif
++
+ namespace android {
+ 
+ // ===========================================================================
+@@ -51,6 +55,10 @@ GraphicBuffer::GraphicBuffer()
+     format = 
+     usage  = 0;
+     handle = NULL;
++#ifdef MTK_MT6589
++    mva    = 0;
++    msize  = 0;
++#endif
+ }
+ 
+ GraphicBuffer::GraphicBuffer(uint32_t w, uint32_t h,
+@@ -64,6 +72,10 @@ GraphicBuffer::GraphicBuffer(uint32_t w, uint32_t h,
+     format =
+     usage  = 0;
+     handle = NULL;
++#ifdef MTK_MT6589
++    mva    = 0;
++    msize  = 0;
++#endif
+     mInitCheck = initSize(w, h, reqFormat, reqUsage);
+ }
+ 
+@@ -96,6 +108,10 @@ GraphicBuffer::GraphicBuffer(uint32_t w, uint32_t h,
+     format = inFormat;
+     usage  = inUsage;
+     handle = inHandle;
++#ifdef MTK_MT6589
++    mva    = 0;
++    msize  = 0;
++#endif
+ }
+ 
+ GraphicBuffer::GraphicBuffer(ANativeWindowBuffer* buffer, bool keepOwnership)
+@@ -109,6 +125,10 @@ GraphicBuffer::GraphicBuffer(ANativeWindowBuffer* buffer, bool keepOwnership)
+     format = buffer->format;
+     usage  = buffer->usage;
+     handle = buffer->handle;
++#ifdef MTK_MT6589
++    mva    = 0;
++    msize  = 0;
++#endif
+ }
+ 
+ GraphicBuffer::~GraphicBuffer()
+@@ -412,6 +432,18 @@ status_t GraphicBuffer::unflatten(
+     return NO_ERROR;
+ }
+ 
++#ifdef MTK_MT6589
++status_t GraphicBuffer::getIonFd(int *idx, int *num)
++{
++    return getBufferMapper().getIonFd(handle, idx, num);
++}
++
++void GraphicBuffer::setMva(unsigned int _mva)
++{
++    mva = _mva;
++#endif
++}
++
+ // ---------------------------------------------------------------------------
+ 
+ }; // namespace android
+diff --git a/libs/ui/GraphicBufferMapper.cpp b/libs/ui/GraphicBufferMapper.cpp
+index ce76e7a..c771a44 100644
+--- a/libs/ui/GraphicBufferMapper.cpp
++++ b/libs/ui/GraphicBufferMapper.cpp
+@@ -46,8 +46,21 @@ GraphicBufferMapper::GraphicBufferMapper()
+     if (err == 0) {
+         mAllocMod = (gralloc_module_t const *)module;
+     }
++#ifdef MTK_MT6589
++    mExtraDev = NULL;
++    if (err == 0) {
++        gralloc_extra_open(module, &mExtraDev);
++    }
++#endif
+ }
+ 
++#ifdef MTK_MT6589
++GraphicBufferMapper::~GraphicBufferMapper()
++{
++    gralloc_extra_close(mExtraDev);
++}
++#endif
++
+ status_t GraphicBufferMapper::registerBuffer(buffer_handle_t handle)
+ {
+     ATRACE_CALL();
+@@ -191,6 +204,24 @@ status_t GraphicBufferMapper::getphys(buffer_handle_t handle, void** paddr)
+ }
+ #endif
+ 
++#ifdef MTK_MT6589
++status_t GraphicBufferMapper::getIonFd(buffer_handle_t handle, int *idx, int *num)
++{
++    ATRACE_CALL();
++    status_t err;
++
++    if (!mExtraDev) {
++        ALOGE("gralloc extra device is not supported");
++        return INVALID_OPERATION;
++    }
++
++    err = mExtraDev->getIonFd(mExtraDev, handle, idx, num);
++
++    ALOGW_IF(err, "getIonFd(...) failed %d (%s)", err, strerror(-err));
++    return err;
++}
++#endif
++
+ 
+ // ---------------------------------------------------------------------------
+ }; // namespace android
+diff --git a/libs/ui/PixelFormat.cpp b/libs/ui/PixelFormat.cpp
+index a716949..9c41f58 100644
+--- a/libs/ui/PixelFormat.cpp
++++ b/libs/ui/PixelFormat.cpp
+@@ -53,6 +53,10 @@ static Info const sPixelFormatInfos[] = {
+         { 1,  8, { 0, 0,   8, 0,   8, 0,   8, 0 }, PixelFormatInfo::L    },
+         { 2, 16, {16, 8,   8, 0,   8, 0,   8, 0 }, PixelFormatInfo::LA   },
+         { 1,  8, { 0, 0,   8, 5,   5, 2,   2, 0 }, PixelFormatInfo::RGB  },
++#ifdef MTK_MT6589
++        // SGX_BGRX_8888
++        { 4, 24, { 0, 0,  24,16,  16, 8,   8, 0 }, PixelFormatInfo::RGB  },
++#endif
+ };
+ 
+ static const Info* gGetPixelFormatTable(size_t* numEntries) {
+@@ -96,7 +100,11 @@ status_t getPixelFormatInfo(PixelFormat format, PixelFormatInfo* info)
+      done:
+         info->format = format;
+         info->components = COMPONENT_YUV;
++#ifdef MTK_MT6589
++        info->bytesPerPixel = 2;
++#else
+         info->bytesPerPixel = 1;
++#endif
+         info->h_alpha = 0;
+         info->l_alpha = 0;
+         info->h_red = info->h_green = info->h_blue = 8;
+@@ -104,9 +112,17 @@ status_t getPixelFormatInfo(PixelFormat format, PixelFormatInfo* info)
+         return NO_ERROR;
+     }
+ 
++#ifdef MTK_MT6589
++    // for SGX BGRX 8888
++    int index = (format == 0x1FF) ? 12 : format;
++    size_t numEntries;
++    const Info *i = gGetPixelFormatTable(&numEntries) + index;
++    bool valid = uint32_t(index) < numEntries;
++#else
+     size_t numEntries;
+     const Info *i = gGetPixelFormatTable(&numEntries) + format;
+     bool valid = uint32_t(format) < numEntries;
++#endif
+     if (!valid) {
+         return BAD_INDEX;
+     }
+diff --git a/libs/ui/mediatek/Fence.cpp b/libs/ui/mediatek/Fence.cpp
+new file mode 100644
+index 0000000..eba7ea1
+--- /dev/null
++++ b/libs/ui/mediatek/Fence.cpp
+@@ -0,0 +1,59 @@
++#define LOG_TAG "Fence"
++
++#include <sync/sync.h>
++#include <ui/Fence.h>
++#include <unistd.h>
++
++#include <cutils/xlog.h>
++
++// ---------------------------------------------------------------------------
++
++const char* findKeyWord(const char* msg) {
++    android::String8 obj_name(msg);
++    obj_name.toLower();
++    const char* OBJ_NAME = obj_name.string();
++
++    // NOTE: keep these keywords in sync with MOF
++    android::String8 keyword("timeline_");
++    if (strstr(OBJ_NAME, "surfaceflinger")) {
++        keyword.append("SurfaceFlinger");
++    } else if (strstr(OBJ_NAME, "ovl_timeline")) {
++        keyword.append("ovl_timeline");
++    } else if (strstr(OBJ_NAME, "mali")) {
++        keyword.append("mali");
++    }
++
++    return keyword.string();
++}
++
++// ---------------------------------------------------------------------------
++
++namespace android {
++
++void Fence::dump(int fd) {
++    if (-1 == fd) return;
++
++    struct sync_fence_info_data *info = sync_fence_info(fd);
++    if (info) {
++        struct sync_pt_info *pt_info = NULL;
++        // status: active(0) signaled(1) error(<0)
++        XLOGI("fence(%s) status(%d)", info->name, info->status);
++
++        // iterate active/error sync points
++        while ((pt_info = sync_pt_info(info, pt_info))) {
++            if (NULL != pt_info && pt_info->status <= 0) {
++                int ts_sec = pt_info->timestamp_ns / 1000000000LL;
++                int ts_usec = (pt_info->timestamp_ns % 1000000000LL) / 1000LL;
++
++                String8 msg = String8::format(
++                    "sync point: timeline(%s) drv(%s) status(%d) sync_drv(%u) timestamp(%d.%06d)",
++                    pt_info->obj_name, pt_info->driver_name, pt_info->status,
++                    *(uint32_t *)pt_info->driver_data, ts_sec, ts_usec);
++                XLOGI(msg.string());
++            }
++        }
++        sync_fence_info_free(info);
++    }
++}
++
++} // namespace android
+diff --git a/libs/ui/mediatek/IDumpTunnel.cpp b/libs/ui/mediatek/IDumpTunnel.cpp
+new file mode 100644
+index 0000000..8d569f0
+--- /dev/null
++++ b/libs/ui/mediatek/IDumpTunnel.cpp
+@@ -0,0 +1,114 @@
++#define LOG_TAG "DumpTunnel"
++
++#include <dlfcn.h>
++#include <utils/String8.h>
++#include <binder/Parcel.h>
++#include <cutils/xlog.h>
++#include <ui/mediatek/IDumpTunnel.h>
++
++namespace android {
++
++// client : proxy GuiEx class
++class BpDumpTunnel : public BpInterface<IDumpTunnel> {
++public:
++    BpDumpTunnel(const sp<IBinder>& impl)
++        :   BpInterface<IDumpTunnel>(impl) {
++    }
++
++    virtual status_t kickDump(String8& result, const char* prefix) {
++        Parcel data, reply;
++        data.writeInterfaceToken(IDumpTunnel::getInterfaceDescriptor());
++        data.writeString8(result);
++        data.writeCString(prefix);
++        status_t err = remote()->transact(DUMPTUNNEL_DUMP, data, &reply);
++        if (err != NO_ERROR) {
++            XLOGE("kickDump could not contact remote\n");
++            return err;
++        }
++        result = reply.readString8();
++        err = reply.readInt32();
++        return err;
++    }
++};
++
++IMPLEMENT_META_INTERFACE(DumpTunnel, "DumpTunnel");
++
++status_t BnDumpTunnel::onTransact(uint32_t code, const Parcel& data, Parcel* reply, uint32_t flags) {
++    switch (code) {
++        case DUMPTUNNEL_DUMP: {
++            CHECK_INTERFACE(IDumpTunnel, data, reply);
++            String8 result;
++            const char* prefix = NULL;
++            result = data.readString8();
++            prefix = data.readCString();
++
++            status_t ret = kickDump(result, prefix);
++            reply->writeString8(result);
++            reply->writeInt32(ret);
++            return NO_ERROR;
++        } break;
++    }
++    return BBinder::onTransact(code, data, reply, flags);
++}
++
++// ----------------------------------------------------------------------------
++
++ANDROID_SINGLETON_STATIC_INSTANCE(DumpTunnelHelper);
++
++DumpTunnelHelper::DumpTunnelHelper() :
++    mSoHandle(NULL),
++    mRegDumpPtr(NULL),
++    mUnregDumpPtr(NULL)
++{
++    typedef bool (*RegDumpPrototype)(const sp<IDumpTunnel>&, const String8&);
++    typedef bool (*UnregDumpPrototype)(const String8&);
++
++    // dlopen must set RTLD_LAZY flag because of performance issue
++    // need to use different path for 32/64 env
++#ifdef __LP64__
++    mSoHandle = dlopen("/system/lib64/libgui_ext.so", RTLD_LAZY);
++#else
++    mSoHandle = dlopen("/system/lib/libgui_ext.so", RTLD_LAZY);
++#endif
++    if (mSoHandle) {
++        mRegDumpPtr = reinterpret_cast<RegDumpPrototype>(dlsym(mSoHandle, "regDump"));
++        mUnregDumpPtr = reinterpret_cast<UnregDumpPrototype>(dlsym(mSoHandle, "unregDump"));
++        if (NULL == mRegDumpPtr) {
++            XLOGE("finding regDump() failed");
++        }
++        if (NULL == mUnregDumpPtr) {
++            XLOGE("finding unregDump() failed");
++        }
++    } else {
++        XLOGE("open libgui_ext failed");
++    }
++}
++
++DumpTunnelHelper::~DumpTunnelHelper() {
++    if(mSoHandle != NULL)
++        dlclose(mSoHandle);
++}
++
++bool DumpTunnelHelper::regDump(const sp<IDumpTunnel>& tunnel, const String8& key) {
++    bool result = false;
++    if (NULL == mRegDumpPtr) {
++        XLOGE("finding regDump() failed");
++        return result;
++    }
++    result = mRegDumpPtr(tunnel, key);
++
++    return result;
++}
++
++bool DumpTunnelHelper::unregDump(const String8& key) {
++    bool result = false;
++    if (NULL == mUnregDumpPtr) {
++        XLOGE("finding unregDump() failed");
++        return result;
++    }
++    result = mUnregDumpPtr(key);
++
++    return result;
++}
++
++};
+diff --git a/libs/ui/mediatek/RefBaseDump.cpp b/libs/ui/mediatek/RefBaseDump.cpp
+new file mode 100644
+index 0000000..1f45cac
+--- /dev/null
++++ b/libs/ui/mediatek/RefBaseDump.cpp
+@@ -0,0 +1,111 @@
++#define LOG_TAG "RefBaseDump"
++
++#if 0
++#define RBD_LOGV(x, ...) ALOGV(x, ##__VA_ARGS__)
++#define RBD_LOGD(x, ...) ALOGD(x, ##__VA_ARGS__)
++#define RBD_LOGI(x, ...) ALOGI(x, ##__VA_ARGS__)
++#define RBD_LOGW(x, ...) ALOGW(x, ##__VA_ARGS__)
++#define RBD_LOGE(x, ...) ALOGE(x, ##__VA_ARGS__)
++#else
++#define RBD_LOGV(x, ...)
++#define RBD_LOGD(x, ...)
++#define RBD_LOGI(x, ...)
++#define RBD_LOGW(x, ...)
++#define RBD_LOGE(x, ...)
++#endif
++
++#include <cutils/xlog.h>
++#include <cutils/process_name.h>
++#include <cutils/properties.h>
++#include <ui/mediatek/RefBaseDump.h>
++
++namespace android {
++
++//-------------------------------------------------------------------------
++// RefBaseDump
++//-------------------------------------------------------------------------
++
++RefBaseDump::RefBaseDump(RefBaseMonitor* pMonitor)
++    : mMonitor(pMonitor) {
++}
++
++RefBaseDump::~RefBaseDump() {
++}
++
++status_t RefBaseDump::kickDump(String8& result, const char* prefix) {
++    return mMonitor->dump(result);
++}
++
++//-------------------------------------------------------------------------
++// RefBaseMonitor
++//-------------------------------------------------------------------------
++
++ANDROID_SINGLETON_STATIC_INSTANCE(RefBaseMonitor)
++
++RefBaseMonitor::RefBaseMonitor() {
++    char value[PROPERTY_VALUE_MAX];
++    RBD_LOGI("RefBaseMonitor ctor - %p", this);
++    getProcessName();
++    property_get("debug.rb.dump", value, "Mary had a little lamb");
++    mIsTracking = (-1 != mProcessName.find(value));
++    mDump = new RefBaseDump(this);
++    DumpTunnelHelper::getInstance().regDump(mDump, String8::format("RB-%p", this));
++}
++
++RefBaseMonitor::~RefBaseMonitor() {
++    RBD_LOGI("RefBaseMonitor dtor - %p", this);
++    DumpTunnelHelper::getInstance().unregDump(String8::format("RB-%p", this));
++}
++
++status_t RefBaseMonitor::monitor(RefBase *pRb) {
++    Mutex::Autolock _l(mMutex);
++    if (mIsTracking) {
++        pRb->trackMe(true, false);
++    }
++    RbList.add(pRb, 0);
++    return NO_ERROR;
++}
++
++status_t RefBaseMonitor::unmonitor(RefBase *pRb) {
++    Mutex::Autolock _l(mMutex);
++    RbList.removeItem(pRb);
++    return NO_ERROR;
++}
++
++status_t RefBaseMonitor::dump(String8& result) {
++    int listSz;
++    RefBase *pRb;
++    Mutex::Autolock _l(mMutex);
++    RBD_LOGI("RefBaseMonitor Dump - %p", this);
++    listSz = RbList.size();
++    result.appendFormat("\t  [%8p]    RefCnt   %s", this, mProcessName.string());
++    result.append(mIsTracking ? " <- tracking\n" : "\n");
++    result.append("\t  -----------------------\n");
++
++    for (int i = 0; i < listSz; i++) {
++        pRb = RbList.keyAt(i);
++        if (mIsTracking) {
++            pRb->printRefs();
++        }
++        result.appendFormat("\t   %2d) %8p %4d\n", i, pRb, pRb->getStrongCount());
++    }
++    result.append("\t*****************************************************\n");
++    return NO_ERROR;
++}
++
++status_t RefBaseMonitor::getProcessName() {
++    int pid = getpid();
++    FILE *fp = fopen(String8::format("/proc/%d/cmdline", pid), "r");
++    if (NULL != fp) {
++        const size_t size = 64;
++        char proc_name[size];
++        fgets(proc_name, size, fp);
++        fclose(fp);
++        mProcessName = proc_name;
++    } else {
++        mProcessName = "unknownProcess";
++    }
++    return NO_ERROR;
++}
++
++}
+diff --git a/services/surfaceflinger/Android.mk b/services/surfaceflinger/Android.mk
+index f9a6852..ae9f842 100644
+--- a/services/surfaceflinger/Android.mk
++++ b/services/surfaceflinger/Android.mk
+@@ -40,6 +40,10 @@ LOCAL_SRC_FILES:= \
+ LOCAL_CFLAGS:= -DLOG_TAG=\"SurfaceFlinger\"
+ LOCAL_CFLAGS += -DGL_GLEXT_PROTOTYPES -DEGL_EGLEXT_PROTOTYPES
+ 
++ifeq ($(TARGET_BOARD_PLATFORM),mt6589)
++LOCAL_CFLAGS += -DMTK_MT6589
++endif
++
+ ifeq ($(TARGET_BOARD_PLATFORM),omap4)
+ 	LOCAL_CFLAGS += -DHAS_CONTEXT_PRIORITY
+ endif
+diff --git a/services/surfaceflinger/DisplayDevice.cpp b/services/surfaceflinger/DisplayDevice.cpp
+index aaffec4..22afd29 100644
+--- a/services/surfaceflinger/DisplayDevice.cpp
++++ b/services/surfaceflinger/DisplayDevice.cpp
+@@ -155,6 +155,9 @@ DisplayDevice::DisplayDevice(
+ 
+     // initialize the display orientation transform.
+     setProjection(panelOrientation, mViewport, mFrame);
++#ifdef MTK_MT6589
++    mLayersSwapRequired = false;
++#endif
+ }
+ 
+ DisplayDevice::~DisplayDevice() {
+diff --git a/services/surfaceflinger/DisplayDevice.h b/services/surfaceflinger/DisplayDevice.h
+index 47ce8ac..7d76f1b 100644
+--- a/services/surfaceflinger/DisplayDevice.h
++++ b/services/surfaceflinger/DisplayDevice.h
+@@ -241,6 +241,11 @@ class DisplayDevice : public LightRefBase<DisplayDevice>
+     int mActiveConfig;
+     // Panel is inverse mounted
+     int mPanelInverseMounted;
++
++#ifdef MTK_MT6589
++public:
++    mutable bool mLayersSwapRequired;
++#endif
+ };
+ 
+ }; // namespace android
+diff --git a/services/surfaceflinger/DisplayHardware/HWComposer.cpp b/services/surfaceflinger/DisplayHardware/HWComposer.cpp
+index 3aa8d3f..9782916 100644
+--- a/services/surfaceflinger/DisplayHardware/HWComposer.cpp
++++ b/services/surfaceflinger/DisplayHardware/HWComposer.cpp
+@@ -16,6 +16,15 @@
+ 
+ #define ATRACE_TAG ATRACE_TAG_GRAPHICS
+ 
++#ifdef MTK_MT6589
++#ifdef MTK_HWC_SUPPORT_V0
++#define HWC_REMOVE_DEPRECATED_VERSIONS 0
++#else
++// Uncomment this to remove support for HWC_DEVICE_API_VERSION_0_3 and older
++#define HWC_REMOVE_DEPRECATED_VERSIONS 1
++#endif
++#endif
++
+ #include <inttypes.h>
+ #include <math.h>
+ #include <stdint.h>
+@@ -51,15 +60,25 @@
+ 
+ namespace android {
+ 
+-#define MIN_HWC_HEADER_VERSION HWC_HEADER_VERSION
++#define MIN_HWC_HEADER_VERSION 0
+ 
+ static uint32_t hwcApiVersion(const hwc_composer_device_1_t* hwc) {
+     uint32_t hwcVersion = hwc->common.version;
++    if (MIN_HWC_HEADER_VERSION == 0 &&
++            (hwcVersion & HARDWARE_API_VERSION_2_MAJ_MIN_MASK) == 0) {
++        // legacy version encoding
++        hwcVersion <<= 16;
++    }
+     return hwcVersion & HARDWARE_API_VERSION_2_MAJ_MIN_MASK;
+ }
+ 
+ static uint32_t hwcHeaderVersion(const hwc_composer_device_1_t* hwc) {
+     uint32_t hwcVersion = hwc->common.version;
++    if (MIN_HWC_HEADER_VERSION == 0 &&
++            (hwcVersion & HARDWARE_API_VERSION_2_MAJ_MIN_MASK) == 0) {
++        // legacy version encoding
++        hwcVersion <<= 16;
++    }
+     return hwcVersion & HARDWARE_API_VERSION_2_HEADER_MASK;
+ }
+ 
+@@ -108,6 +127,18 @@ HWComposer::HWComposer(
+ 
+     bool needVSyncThread = true;
+ 
++// [MTK] {{{
++#if !HWC_REMOVE_DEPRECATED_VERSIONS
++    needVSyncThread = initHWC_0();
++    if (mHwc_0 && mHwc_0->registerProcs) {
++        mCBContext->hwc = this;
++        mCBContext->procs.invalidate = &hook_invalidate;
++        mCBContext->procs.vsync = &hook_vsync;
++        memset(mCBContext->procs.zero, 0, sizeof(mCBContext->procs.zero));
++        mHwc_0->registerProcs(mHwc_0, &mCBContext->procs);
++    }
++#else
++// [MTK] }}}
+     // Note: some devices may insist that the FB HAL be opened before HWC.
+     int fberr = loadFbHalModule();
+     loadHwcModule();
+@@ -166,6 +197,9 @@ HWComposer::HWComposer(
+             mNumDisplays = 1;
+         }
+     }
++// [MTK] {{{
++#endif // HWC_REMOVE_DEPRECATED_VERSIONS
++// [MTK] }}}
+ 
+     if (mFbDev) {
+         ALOG_ASSERT(!(mHwc && hwcHasApiVersion(mHwc, HWC_DEVICE_API_VERSION_1_1)),
+@@ -213,6 +247,11 @@ HWComposer::HWComposer(
+ }
+ 
+ HWComposer::~HWComposer() {
++// [MTK] {{{
++#if !HWC_REMOVE_DEPRECATED_VERSIONS
++    deinitHWC_0();
++#else
++// [MTK] }}}
+     if (mHwc) {
+         eventControl(HWC_DISPLAY_PRIMARY, HWC_EVENT_VSYNC, 0);
+     }
+@@ -222,6 +261,9 @@ HWComposer::~HWComposer() {
+     if (mHwc) {
+         hwc_close_1(mHwc);
+     }
++// [MTK] {{{
++#endif // HWC_REMOVE_DEPRECATED_VERSIONS
++// [MTK] }}}
+     if (mFbDev) {
+         framebuffer_close(mFbDev);
+     }
+@@ -271,6 +313,11 @@ int HWComposer::loadFbHalModule()
+ }
+ 
+ status_t HWComposer::initCheck() const {
++// [MTK] {{{
++#if !HWC_REMOVE_DEPRECATED_VERSIONS
++    return mHwc_0 ? NO_ERROR : NO_INIT;
++#endif
++// [MTK] }}}
+     return mHwc ? NO_ERROR : NO_INIT;
+ }
+ 
+@@ -552,6 +599,12 @@ size_t HWComposer::getCurrentConfig(int disp) const {
+ }
+ 
+ void HWComposer::eventControl(int disp, int event, int enabled) {
++// [MTK] {{{
++#if !HWC_REMOVE_DEPRECATED_VERSIONS
++    eventControl_0(disp, event, enabled);
++    return;
++#endif
++// [MTK] }}}
+     if (uint32_t(disp)>31 || !mAllocatedDisplayIDs.hasBit(disp)) {
+         ALOGD("eventControl ignoring event %d on unallocated disp %d (en=%d)",
+               event, disp, enabled);
+@@ -604,6 +657,11 @@ void HWComposer::eventControl(int disp, int event, int enabled) {
+ }
+ 
+ status_t HWComposer::createWorkList(int32_t id, size_t numLayers) {
++// [MTK] {{{
++#if !HWC_REMOVE_DEPRECATED_VERSIONS
++    return createWorkList_0(id, numLayers);
++#endif
++// [MTK] }}}
+     if (uint32_t(id)>31 || !mAllocatedDisplayIDs.hasBit(id)) {
+         return BAD_INDEX;
+     }
+@@ -652,7 +710,16 @@ status_t HWComposer::createWorkList(int32_t id, size_t numLayers) {
+                 &disp.framebufferTarget->displayFrame;
+             disp.framebufferTarget->acquireFenceFd = -1;
+             disp.framebufferTarget->releaseFenceFd = -1;
++#ifdef MTK_MT6589
++            disp.framebufferTarget->ext.connectApi = -1;
++            disp.framebufferTarget->ext.identity = -1;
++            disp.framebufferTarget->ext.width = currentConfig.width;
++            disp.framebufferTarget->ext.height = currentConfig.height;
++            disp.framebufferTarget->ext.stride = currentConfig.width;
++            disp.framebufferTarget->ext.format = disp.format;
++#else
+             disp.framebufferTarget->planeAlpha = 0xFF;
++#endif
+         }
+         disp.list->retireFenceFd = -1;
+         disp.list->flags = HWC_GEOMETRY_CHANGED;
+@@ -684,10 +751,22 @@ status_t HWComposer::setFramebufferTarget(int32_t id,
+     disp.fbTargetHandle = buf->handle;
+     disp.framebufferTarget->handle = disp.fbTargetHandle;
+     disp.framebufferTarget->acquireFenceFd = acquireFenceFd;
++#ifdef MTK_MT6589
++    disp.framebufferTarget->ext.width = buf->width;
++    disp.framebufferTarget->ext.height = buf->height;
++    disp.framebufferTarget->ext.stride = buf->stride;
++    disp.framebufferTarget->ext.format = buf->format;
++#endif
+     return NO_ERROR;
+ }
+ 
+ status_t HWComposer::prepare() {
++// [MTK] {{{
++    ATRACE_CALL();
++#if !HWC_REMOVE_DEPRECATED_VERSIONS
++    return prepare_0();
++#endif
++// [MTK] }}}
+     Mutex::Autolock _l(mDrawLock);
+     for (size_t i=0 ; i<mNumDisplays ; i++) {
+         DisplayData& disp(mDisplayData[i]);
+@@ -715,6 +794,14 @@ status_t HWComposer::prepare() {
+             } else {
+                 mLists[i]->dpy = EGL_NO_DISPLAY;
+                 mLists[i]->sur = EGL_NO_SURFACE;
++#ifdef MTK_MT6589
++                // External Display related
++                // (only need for HWC_DEVICE_API_VERSION_1_0 or lower version)
++                if (i == 0) {
++                    sp<const DisplayDevice> hw(mFlinger->getDefaultDisplayDevice());
++                    mLists[i]->flags |= hw->getOrientation() << 16;
++                }
++#endif
+             }
+         }
+     }
+@@ -827,6 +914,12 @@ sp<Fence> HWComposer::getAndResetReleaseFence(int32_t id) {
+ }
+ 
+ status_t HWComposer::commit() {
++// [MTK] {{{
++    ATRACE_CALL();
++#if !HWC_REMOVE_DEPRECATED_VERSIONS
++    return commit_0();
++#endif
++// [MTK] }}}
+     int err = NO_ERROR;
+     if (mHwc) {
+         if (!hwcHasApiVersion(mHwc, HWC_DEVICE_API_VERSION_1_1)) {
+@@ -839,6 +932,12 @@ status_t HWComposer::commit() {
+ 
+         for (size_t i=VIRTUAL_DISPLAY_ID_BASE; i<mNumDisplays; i++) {
+             DisplayData& disp(mDisplayData[i]);
++#ifdef MTK_MT6589
++        // get layer swap information and raise flag if necessary
++            if (disp.list && mFlinger->getAndClearLayersSwapRequired(i)) {
++                disp.list->flags |= HWC_SWAP_REQUIRED;
++            }
++#endif
+             if (disp.outbufHandle) {
+                 mLists[i]->outbuf = disp.outbufHandle;
+                 mLists[i]->outbufAcquireFenceFd =
+@@ -858,6 +957,12 @@ status_t HWComposer::commit() {
+                     disp.list->retireFenceFd = -1;
+                 }
+                 disp.list->flags &= ~HWC_GEOMETRY_CHANGED;
++                // [MTK] {{{
++                // clear additional flags
++                disp.list->flags &=
++                    ~(HWC_SWAP_REQUIRED | HWC_LAYERSCREENSHOT_EXIST |
++                      HWC_SCREEN_FROZEN | HWC_ORIENTATION_MASK);
++                // [MTK] }}}
+             }
+         }
+     }
+@@ -1053,7 +1158,9 @@ class HWCLayerVersion1 : public Iterable<HWCLayerVersion1, hwc_layer_1_t> {
+     }
+     virtual void setPlaneAlpha(uint8_t alpha) {
+         if (hwcHasApiVersion(mHwc, HWC_DEVICE_API_VERSION_1_2)) {
++#ifndef MTK_MT6589
+             getLayer()->planeAlpha = alpha;
++#endif
+         } else {
+             if (alpha < 0xFF) {
+                 getLayer()->flags |= HWC_SKIP_LAYER;
+@@ -1072,7 +1179,17 @@ class HWCLayerVersion1 : public Iterable<HWCLayerVersion1, hwc_layer_1_t> {
+         l->visibleRegionScreen.rects = NULL;
+         l->acquireFenceFd = -1;
+         l->releaseFenceFd = -1;
++#ifdef MTK_MT6589
++        l->ext.connectApi = -1;
++        l->ext.identity = -1;
++        l->ext.width = 0;
++        l->ext.height = 0;
++        l->ext.stride = 0;
++        l->ext.format = 0;
++#else
+         l->planeAlpha = 0xFF;
++#endif
++
+     }
+     virtual void setSkip(bool skip) {
+         if (skip) {
+@@ -1169,6 +1286,13 @@ class HWCLayerVersion1 : public Iterable<HWCLayerVersion1, hwc_layer_1_t> {
+                 getLayer()->compositionType = HWC_FRAMEBUFFER;
+             }
+             getLayer()->handle = buffer->handle;
++#ifdef MTK_MT6589
++            getLayer()->ext.width = buffer->width;
++            getLayer()->ext.height = buffer->height;
++            getLayer()->ext.stride = buffer->stride;
++            getLayer()->ext.format = buffer->format;
++            getLayer()->ext.mva = buffer->getMva();
++#endif
+         }
+     }
+     virtual void onDisplayed() {
+@@ -1183,12 +1307,56 @@ class HWCLayerVersion1 : public Iterable<HWCLayerVersion1, hwc_layer_1_t> {
+ 
+         getLayer()->acquireFenceFd = -1;
+     }
++#ifdef MTK_MT6589
++    virtual int getMva() {
++        return getLayer()->ext.mva;
++    }
++    virtual void setLayerType(uint32_t type) {
++    }
++    virtual void setSecure(bool secure) {
++        if (secure)
++            getLayer()->flags |= HWC_SECURE_LAYER;
++        else
++            getLayer()->flags &= ~HWC_SECURE_LAYER;
++    }
++    virtual void setDirty(bool dirty) {
++        if (dirty)
++            getLayer()->flags |= HWC_DIRTY_LAYER;
++        else
++            getLayer()->flags &= ~HWC_DIRTY_LAYER;
++    }
++    virtual void setConnectedApi(int32_t api) {
++        getLayer()->ext.connectApi = api;
++    }
++    virtual void setIdentity(int32_t id) {
++        getLayer()->ext.identity = id;
++    }
++    virtual void setFillColor(struct hwc_color color) {
++        getLayer()->ext.fillColor = color;
++    }
++    virtual void setMatrix(const Transform& tr) {
++        float *m = getLayer()->ext.transformMatrix;
++        for (int i = 0, j = 0; i < 9; i += 3, j++) {
++            m[i + 0] = tr[0][j];
++            m[i + 1] = tr[1][j];
++            m[i + 2] = tr[2][j];
++        }
++    }
++    virtual void setStereosFlags(uint32_t flag) {
++        getLayer()->ext.extraFlags = flag;
++    }
++#endif
+ };
+ 
+ /*
+  * returns an iterator initialized at a given index in the layer list
+  */
+ HWComposer::LayerListIterator HWComposer::getLayerIterator(int32_t id, size_t index) {
++// [MTK] {{{
++#if !HWC_REMOVE_DEPRECATED_VERSIONS
++    return getLayerIterator_0(id, index);
++#endif
++// [MTK] }}}
+     if (uint32_t(id)>31 || !mAllocatedDisplayIDs.hasBit(id)) {
+         return LayerListIterator();
+     }
+@@ -1210,6 +1378,11 @@ HWComposer::LayerListIterator HWComposer::begin(int32_t id) {
+  * returns an iterator on the end of the layer list
+  */
+ HWComposer::LayerListIterator HWComposer::end(int32_t id) {
++// [MTK] {{{
++#if !HWC_REMOVE_DEPRECATED_VERSIONS
++    return end_0(id);
++#endif
++// [MTK] }}}
+     size_t numLayers = 0;
+     if (uint32_t(id) <= 31 && mAllocatedDisplayIDs.hasBit(id)) {
+         const DisplayData& disp(mDisplayData[id]);
+@@ -1252,6 +1425,11 @@ static String8 getFormatStr(PixelFormat format) {
+ 
+ void HWComposer::dump(String8& result) const {
+     Mutex::Autolock _l(mDrawLock);
++// [MTK] {{{
++#if !HWC_REMOVE_DEPRECATED_VERSIONS
++    dump_0(result, buffer, SIZE);
++#endif
++// [MTK] }}}
+     if (mHwc) {
+         result.appendFormat("Hardware Composer state (version %08x):\n", hwcApiVersion(mHwc));
+         result.appendFormat("  mDebugForceFakeVSync=%d\n", mDebugForceFakeVSync);
+@@ -1359,6 +1537,12 @@ void HWComposer::dump(String8& result) const {
+         mHwc->dump(mHwc, buffer, SIZE);
+         result.append(buffer);
+     }
++    // [MTK] {{{
++    // 20120814: add property function for debug purpose
++//    if (mVSyncThread != NULL) {
++//        mVSyncThread->setProperty();
++//    }
++    // [MTK] }}}
+ }
+ 
+ // ---------------------------------------------------------------------------
+diff --git a/services/surfaceflinger/DisplayHardware/HWComposer.h b/services/surfaceflinger/DisplayHardware/HWComposer.h
+index c0fd214..19bad47 100644
+--- a/services/surfaceflinger/DisplayHardware/HWComposer.h
++++ b/services/surfaceflinger/DisplayHardware/HWComposer.h
+@@ -44,6 +44,25 @@ struct hwc_layer_1;
+ struct hwc_procs;
+ struct framebuffer_device_t;
+ 
++#ifdef MTK_MT6589
++#include "Transform.h"
++
++#ifndef HWC_REMOVE_DEPRECATED_VERSIONS
++#ifdef MTK_HWC_SUPPORT_V0
++#define HWC_REMOVE_DEPRECATED_VERSIONS 0
++#else
++#define HWC_REMOVE_DEPRECATED_VERSIONS 1
++#endif // MTK_HWC_SUPPORT_V0
++#endif // HWC_REMOVE_DEPRECATED_VERSIONS
++
++#if !HWC_REMOVE_DEPRECATED_VERSIONS
++struct hwc_composer_device;
++struct hwc_layer_list;
++struct hwc_layer;
++#endif
++
++struct hwc_color;
++#endif
+ namespace android {
+ // ---------------------------------------------------------------------------
+ 
+@@ -193,6 +212,18 @@ class HWComposer
+         virtual void setAcquireFenceFd(int fenceFd) = 0;
+         virtual void setPlaneAlpha(uint8_t alpha) = 0;
+         virtual void onDisplayed() = 0;
++
++#ifdef MTK_MT6589
++        virtual int getMva() = 0;
++        virtual void setLayerType(uint32_t type) = 0;
++        virtual void setSecure(bool secure) = 0;
++        virtual void setDirty(bool dirty) = 0;
++        virtual void setConnectedApi(int32_t api) = 0;
++        virtual void setIdentity(int32_t id) = 0;
++        virtual void setFillColor(struct hwc_color color) = 0;
++        virtual void setMatrix(const Transform& tr) = 0;
++        virtual void setStereosFlags(uint32_t flag) = 0;
++#endif
+     };
+ 
+     /*
+@@ -320,6 +351,10 @@ class HWComposer
+     public:
+         VSyncThread(HWComposer& hwc);
+         void setEnabled(bool enabled);
++        // [MTK] {{{
++        // 20120814: add property function for debug purpose
++//        void setProperty();
++        // [MTK] }}}
+     };
+ 
+     friend class VSyncThread;
+@@ -446,6 +481,34 @@ class HWComposer
+     float mDynThreshold;
+     bool canHandleOverlapArea(int32_t id, Rect unionDr);
+ #endif
++
++    // [MTK] {{{
++private:
++    nsecs_t getRefreshPeriod() const;
++
++#if !HWC_REMOVE_DEPRECATED_VERSIONS
++    bool initHWC_0();
++    void deinitHWC_0();
++    void loadHwcModule_0();
++
++    LayerListIterator getLayerIterator_0(int32_t id, size_t index);
++
++    status_t prepare_0();
++    status_t commit_0();
++    status_t release_0(int disp) const;
++
++    status_t createWorkList_0(int32_t id, size_t numLayers);
++    void freeWorkList();
++
++    void eventControl_0(int disp, int event, int enabled);
++
++    LayerListIterator end_0(int32_t id);
++    void dump_0(String8& out, char* scratch, size_t SIZE) const;
++
++    struct hwc_composer_device*     mHwc_0;
++    struct hwc_layer_list*          mList;
++#endif // HWC_REMOVE_DEPRECATED_VERSIONS
++    // [MTK] }}}
+ };
+ 
+ // ---------------------------------------------------------------------------
+diff --git a/services/surfaceflinger/Layer.cpp b/services/surfaceflinger/Layer.cpp
+index 0d8b009..e27dfcf 100644
+--- a/services/surfaceflinger/Layer.cpp
++++ b/services/surfaceflinger/Layer.cpp
+@@ -51,9 +51,17 @@
+ #include <gralloc_priv.h>
+ #endif
+ 
++#ifdef MTK_MT6589
++#include <hardware/hwcomposer.h>
++#include <gui/BufferQueueCore.h>
++#endif
++
+ #define DEBUG_RESIZE    0
+ 
+ namespace android {
++#ifdef MTK_MT6589
++int32_t Layer::sIdentity = 1;
++#endif
+ 
+ // ---------------------------------------------------------------------------
+ 
+@@ -111,6 +119,9 @@ Layer::Layer(SurfaceFlinger* flinger, const sp<Client>& client,
+         mClientRef(client),
+         mPotentialCursor(false),
+         mTransformHint(0)
++#ifdef MTK_MT6589
++	, mIdentity(uint32_t(android_atomic_inc(&sIdentity)))
++#endif
+ {
+     mCurrentCrop.makeInvalid();
+     mFlinger->getRenderEngine().genTextures(1, &mTextureName);
+@@ -139,6 +150,14 @@ Layer::Layer(SurfaceFlinger* flinger, const sp<Client>& client,
+     mCurrentState.transform.set(0, 0);
+     mCurrentState.requested = mCurrentState.active;
+ 
++#ifdef MTK_MT6589
++    mCurrentState.flagsEx = layer_state_t::eExInitValue;
++    mCurrentState.usageEx = EXTRA_USAGE_INIT_VALUE;
++    mCurrentState.stConnectedApi = BufferQueueCore::NO_CONNECTED_API;
++    mCurrentState.stCurrentTransform = Transform::ROT_INVALID;
++    mBufferRefCount = 0;
++#endif
++
+     // drawing state & current state are identical
+     mDrawingState = mCurrentState;
+ 
+@@ -171,6 +190,11 @@ void Layer::onFirstRef() {
+     }
+ #endif
+ 
++#endif
++
++#ifdef MTK_MT6589
++    // workaround to use quad buffer for SF layer
++    mSurfaceFlingerConsumer->setDefaultMaxBufferCount(4);
+ #endif
+ 
+     const sp<const DisplayDevice> hw(mFlinger->getDefaultDisplayDevice());
+@@ -195,6 +219,11 @@ void Layer::onLayerDisplayed(const sp<const DisplayDevice>& /* hw */,
+     if (layer) {
+         layer->onDisplayed();
+         mSurfaceFlingerConsumer->setReleaseFence(layer->getAndResetReleaseFence());
++
++#ifdef MTK_MT6589
++        if (mActiveBuffer != NULL)
++		mActiveBuffer->setMva(layer->getMva());
++#endif
+     }
+ }
+ 
+@@ -593,6 +622,16 @@ void Layer::setGeometry(
+     } else {
+         layer.setTransform(orientation);
+     }
++
++#ifdef MTK_MT6589
++    hwc_color_t color;
++    color.a = s.alpha;
++    layer.setFillColor(color);
++    layer.setTransform(orientation);
++    layer.setIdentity(getIdentity());
++    layer.setMatrix(tr);
++    layer.setSecure((isSecure() || isProtected()));
++#endif
+ }
+ 
+ 
+@@ -667,6 +706,10 @@ void Layer::setPerFrameData(const sp<const DisplayDevice>& hw,
+     // NOTE: buffer can be NULL if the client never drew into this
+     // layer yet, or if we ran out of memory
+     layer.setBuffer(mActiveBuffer);
++#ifdef MTK_MT6589
++    layer.setConnectedApi(mSurfaceFlingerConsumer->getConnectedApi());
++    layer.setDirty((mBufferDirty || mBufferRefCount <= 1 || contentDirty));
++#endif
+ }
+ 
+ void Layer::setAcquireFence(const sp<const DisplayDevice>& /* hw */,
+@@ -1491,6 +1534,14 @@ Region Layer::latchBuffer(bool& recomputeVisibleRegions)
+         // FIXME: postedRegion should be dirty & bounds
+         Region dirtyRegion(Rect(s.active.w, s.active.h));
+ 
++#ifdef MTK_MT6589
++        // store buffer dirty infomation and pass to hwc later
++        mBufferDirty = !dirtyRegion.isEmpty();
++        if (mBufferDirty == true){
++            // LazySwap(5) increment buffer ref count when the texture is created
++            mBufferRefCount++;
++        }
++#endif
+         // transform the dirty region to window-manager space
+         outDirtyRegion = (s.transform.transform(dirtyRegion));
+     }
+diff --git a/services/surfaceflinger/Layer.h b/services/surfaceflinger/Layer.h
+index ec669d9..6ed3247 100644
+--- a/services/surfaceflinger/Layer.h
++++ b/services/surfaceflinger/Layer.h
+@@ -118,6 +118,12 @@ class Layer : public SurfaceFlingerConsumer::ContentsChangedListener {
+         // dependent.
+         Region activeTransparentRegion;
+         Region requestedTransparentRegion;
++#ifdef MTK_MT6589
++        uint32_t flagsEx;
++        uint32_t usageEx;
++        uint32_t stConnectedApi;
++        uint32_t stCurrentTransform;
++#endif
+     };
+ 
+     // -----------------------------------------------------------------------
+@@ -334,6 +340,11 @@ class Layer : public SurfaceFlingerConsumer::ContentsChangedListener {
+     bool hasNewFrame() const;
+ #endif
+ 
++#ifdef MTK_MT6589
++    bool mBufferDirty;
++    mutable uint64_t mBufferRefCount;
++#endif
++
+ protected:
+     // constant
+     sp<SurfaceFlinger> mFlinger;
+@@ -439,6 +450,28 @@ class Layer : public SurfaceFlingerConsumer::ContentsChangedListener {
+ 
+     // Transform hint assigned for the layer
+     uint32_t mTransformHint;
++#ifdef MTK_MT6589
++/*
++    void dumpActiveBuffer() const;            // debug info
++    
++    // for continuous buffers dump
++    int mContBufsDumpById;
++    uint32_t mBackupBufsIndex;
++    uint32_t mBackupBufsMax; 
++    Vector< sp<GraphicBuffer> > mBackBufs;
++    
++//    virtual void setContBufsDumpById(int identity);        
++    void dumpGraphicBuffer(sp<GraphicBuffer> buf, int index) const;
++    void backupProcess(void* dst, void* src, size_t size);
++*/
++    const uint32_t mIdentity;uint32_t getIdentity() const { return mIdentity; }
++    static int32_t sIdentity;
++
++//public:
++//    void dumpContinuousBuffer() const;
++//    virtual void activeBufferBackup();
++//    virtual bool queryBackupBufs(){return mQueuedFrames > 0;};
++#endif
+ };
+ 
+ // ---------------------------------------------------------------------------
+diff --git a/services/surfaceflinger/LayerDim.cpp b/services/surfaceflinger/LayerDim.cpp
+index 97f5048..c9ea1fc 100644
+--- a/services/surfaceflinger/LayerDim.cpp
++++ b/services/surfaceflinger/LayerDim.cpp
+@@ -28,6 +28,10 @@
+ #include "DisplayDevice.h"
+ #include "RenderEngine/RenderEngine.h"
+ 
++#ifdef MTK_MT6589
++#include <hardware/hwcomposer.h>
++#endif
++
+ namespace android {
+ // ---------------------------------------------------------------------------
+ 
+@@ -58,7 +62,36 @@ bool LayerDim::isVisible() const {
+     return !(s.flags & layer_state_t::eLayerHidden) && s.alpha;
+ }
+ 
++#ifdef MTK_MT6589
++void LayerDim::setGeometry(
++    const sp<const DisplayDevice>& hw,
++        HWComposer::HWCLayerInterface& layer)
++{
++    Layer::setGeometry(hw, layer);
++
++    layer.setLayerType(HWC_DIM_LAYER);
++
++    const State& s(getDrawingState());
++    hwc_color_t color;
++    color.a = s.alpha;
++    layer.setFillColor(color);
++    if (s.alpha != 0xFF) {
++        layer.setBlending(HWC_BLENDING_PREMULT);
++    }
++    
++    const Transform tr(hw->getTransform() * s.transform);
++    layer.setTransform(tr.getOrientation());
++    layer.setMatrix(tr);
++}
++
++void LayerDim::setPerFrameData(const sp<const DisplayDevice>& hw,
++        HWComposer::HWCLayerInterface& layer) 
++{
++    Layer::setPerFrameData(hw, layer);
++    layer.setBuffer(NULL);
++}
+ 
++#endif
+ // ---------------------------------------------------------------------------
+ 
+ }; // namespace android
+diff --git a/services/surfaceflinger/LayerDim.h b/services/surfaceflinger/LayerDim.h
+index 00261b8..d55614e 100644
+--- a/services/surfaceflinger/LayerDim.h
++++ b/services/surfaceflinger/LayerDim.h
+@@ -40,6 +40,12 @@ class LayerDim : public Layer
+     virtual bool isSecure() const         { return false; }
+     virtual bool isFixedSize() const      { return true; }
+     virtual bool isVisible() const;
++#ifdef MTK_MT6589
++    virtual void setGeometry(const sp<const DisplayDevice>& hw,
++            HWComposer::HWCLayerInterface& layer);
++    virtual void setPerFrameData(const sp<const DisplayDevice>& hw,
++            HWComposer::HWCLayerInterface& layer);
++#endif
+ };
+ 
+ // ---------------------------------------------------------------------------
+diff --git a/services/surfaceflinger/SurfaceFlinger.cpp b/services/surfaceflinger/SurfaceFlinger.cpp
+index ca3f027..d860b3e 100644
+--- a/services/surfaceflinger/SurfaceFlinger.cpp
++++ b/services/surfaceflinger/SurfaceFlinger.cpp
+@@ -104,6 +104,10 @@ EGLAPI const char* eglQueryStringImplementationANDROID(EGLDisplay dpy, EGLint na
+ 
+ namespace android {
+ 
++#ifdef MTK_MT6589
++bool SurfaceFlinger::mContentsDirty;
++#endif
++
+ // This is the phase offset in nanoseconds of the software vsync event
+ // relative to the vsync event reported by HWComposer.  The software vsync
+ // event is when SurfaceFlinger and Choreographer-based applications run each
+@@ -207,6 +211,9 @@ SurfaceFlinger::SurfaceFlinger()
+ 
+     ALOGI_IF(mDebugRegion, "showupdates enabled");
+     ALOGI_IF(mDebugDDMS, "DDMS debugging enabled");
++#ifdef MTK_MT6589
++    mContentsDirty = false;
++#endif
+ }
+ 
+ void SurfaceFlinger::onFirstRef()
+@@ -1113,6 +1120,11 @@ void SurfaceFlinger::rebuildLayerStacks() {
+                 SurfaceFlinger::computeVisibleRegions(dpyId, layers,
+                         hw->getLayerStack(), dirtyRegion, opaqueRegion);
+ 
++#ifdef MTK_MT6589
++                hw->mLayersSwapRequired |= mContentsDirty;
++                mContentsDirty = false;
++#endif
++
+                 const size_t count = layers.size();
+                 for (size_t i=0 ; i<count ; i++) {
+                     const sp<Layer>& layer(layers[i]);
+@@ -1277,10 +1289,22 @@ void SurfaceFlinger::setUpHWComposer() {
+                 }
+             }
+         }
++#ifdef MTK_MT6589
++        // check if any previous layer is processed by gles
++        const bool prevGlesComposition = hwc.hasGlesComposition(DisplayDevice::DISPLAY_PRIMARY);
++#endif
+ 
+         status_t err = hwc.prepare();
+         ALOGE_IF(err, "HWComposer::prepare failed (%s)", strerror(-err));
+ 
++#ifdef MTK_MT6589
++        // do not render transparent region if unnecessary
++        for (size_t dpy=0 ; dpy<mDisplays.size() ; dpy++) {
++            sp<const DisplayDevice> hw(mDisplays[dpy]);
++            checkLayersSwapRequired(hw, prevGlesComposition);
++        }
++#endif
++
+         for (size_t dpy=0 ; dpy<mDisplays.size() ; dpy++) {
+             sp<const DisplayDevice> hw(mDisplays[dpy]);
+             hw->prepareFrame(hwc);
+@@ -1768,6 +1792,12 @@ void SurfaceFlinger::handleTransactionLocked(uint32_t transactionFlags)
+     // some layers might have been removed, so
+     // we need to update the regions they're exposing.
+     if (mLayersRemoved) {
++#ifdef MTK_MT6589
++       for (size_t dpy=0 ; dpy<mDisplays.size() ; dpy++) {
++          sp<DisplayDevice> hw(mDisplays[dpy]);
++	  hw->mLayersSwapRequired = true;
++       }
++#endif
+         mLayersRemoved = false;
+         mVisibleRegionsDirty = true;
+         const size_t count = layers.size();
+@@ -1982,6 +2012,10 @@ void SurfaceFlinger::computeVisibleRegions(size_t dpy,
+         // subtract the opaque region covered by the layers above us
+         visibleRegion.subtractSelf(aboveOpaqueLayers);
+ 
++#ifdef MTK_MT6589
++        mContentsDirty |= layer->contentDirty;
++#endif
++
+         // compute this layer's dirty region
+         if (layer->contentDirty) {
+             // we need to invalidate the whole region
+@@ -2103,6 +2137,14 @@ void SurfaceFlinger::doDisplayComposition(const sp<const DisplayDevice>& hw,
+ 
+     Region dirtyRegion(inDirtyRegion);
+ 
++#ifdef MTK_MT6589
++    if (true == inDirtyRegion.isEmpty()) {
++        if(hw->mLayersSwapRequired)
++            hw->mLayersSwapRequired = false;
++        return;
++    }
++#endif
++
+     // compute the invalid region
+     hw->swapRegion.orSelf(dirtyRegion);
+ 
+@@ -2876,6 +2918,10 @@ void SurfaceFlinger::setPowerModeInternal(const sp<DisplayDevice>& hw,
+     } else {
+         getHwComposer().setPowerMode(type, mode);
+     }
++#ifdef MTK_MT6589
++    usleep(16667);
++    property_set("sys.ipowin.done", "1");
++#endif
+ }
+ 
+ void SurfaceFlinger::setPowerMode(const sp<IBinder>& display, int mode) {
+@@ -3405,6 +3451,13 @@ status_t SurfaceFlinger::onTransact(
+ }
+ 
+ void SurfaceFlinger::repaintEverything() {
++#ifdef MTK_MT6589
++    for (size_t dpy=0 ; dpy<mDisplays.size() ; dpy++) {
++        sp<DisplayDevice> hw(mDisplays[dpy]);
++        hw->mLayersSwapRequired = true;
++    }
++#endif
++
+     android_atomic_or(1, &mRepaintEverything);
+     signalTransaction();
+ }
+@@ -3747,6 +3800,11 @@ status_t SurfaceFlinger::captureScreenImplLocked(
+         bool useReadPixels)
+ {
+     ATRACE_CALL();
++    
++// Rotation artifact problems when useReadPixels is false
++#ifdef MTK_MT6589
++    useReadPixels = true;
++#endif
+ 
+     // get screen geometry
+     const uint32_t hw_w = hw->getWidth();
+@@ -4069,6 +4127,62 @@ SurfaceFlinger::DisplayDeviceState::DisplayDeviceState(DisplayDevice::DisplayTyp
+ 
+ // ---------------------------------------------------------------------------
+ 
++#ifdef MTK_MT6589
++bool SurfaceFlinger::getAndClearLayersSwapRequired(int32_t id) {
++		sp<DisplayDevice> hw = NULL;
++    for (size_t dpy = 0; dpy < mDisplays.size(); dpy++) {
++        hw = mDisplays[dpy];
++        if (id == hw->getHwcDisplayId())
++            break;
++    }
++
++    bool ret = hw->mLayersSwapRequired;
++        hw->mLayersSwapRequired = false;
++    return ret;
++}
++
++void SurfaceFlinger::checkLayersSwapRequired(
++    sp<const DisplayDevice>& hw,
++    const bool prevGlesComposition)
++{
++    size_t count = 0;
++    // case 1: Draw and swap if layer removed
++    // case 2: Draw and swap if layer content updated (by transaction) in drawing state
++    // case 4: Draw and swap if debug region is turned on
++    // case 6: Draw and swap if screen is about to return
++    // case 7: Draw and swap if region is invalidated
++    if (!hw->mLayersSwapRequired) {
++        // case 3: Draw and swap if layer buffer dirty (by queueBuffer() and dequeueBuffer())
++        // case 5: When the texture is created, draw and swap to clear the black screen (ONLY ONCE)
++        // case 6: When all layers were handled by HWC but currently need GPU to handle some layers
++
++        HWComposer& hwc(getHwComposer());
++
++        const int32_t id = hw->getHwcDisplayId();
++        if (!prevGlesComposition && hwc.hasGlesComposition(id)) {
++            hw->mLayersSwapRequired = true;
++            return;
++        }
++
++        if (id < 0 || hwc.initCheck() != NO_ERROR) return;
++
++        const Vector< sp<Layer> >& layers(hw->getVisibleLayersSortedByZ());
++        const size_t count = layers.size();
++        HWComposer::LayerListIterator cur = hwc.begin(id);
++        const HWComposer::LayerListIterator end = hwc.end(id);
++        for (size_t i = 0; cur != end && i < count; ++i, ++cur) {
++            const sp<Layer>& layer(layers[i]);
++            if (((cur->getCompositionType() == HWC_FRAMEBUFFER) &&
++                 layer->mBufferDirty) || (layer->mBufferRefCount <= 1)) {
++                hw->mLayersSwapRequired = true;
++                break;
++            }
++        }
++    }
++}
++
++#endif
++
+ }; // namespace android
+ 
+ 
+diff --git a/services/surfaceflinger/SurfaceFlinger.h b/services/surfaceflinger/SurfaceFlinger.h
+index 1021510..e3c97ac 100644
+--- a/services/surfaceflinger/SurfaceFlinger.h
++++ b/services/surfaceflinger/SurfaceFlinger.h
+@@ -144,6 +144,12 @@ class SurfaceFlinger : public BnSurfaceComposer,
+     static bool sExtendedMode;
+     static bool isExtendedMode() { return sExtendedMode; };
+ #endif
++#ifdef MTK_MT6589
++    static bool mContentsDirty;
++
++    bool getAndClearLayersSwapRequired(int32_t id);
++    void checkLayersSwapRequired (sp<const DisplayDevice>& hw, const bool prevGlesComposition);
++#endif
+ private:
+     friend class Client;
+     friend class DisplayEventConnection;
+diff --git a/services/surfaceflinger/SurfaceFlingerConsumer.cpp b/services/surfaceflinger/SurfaceFlingerConsumer.cpp
+index 7de6ac4..309d3cf 100644
+--- a/services/surfaceflinger/SurfaceFlingerConsumer.cpp
++++ b/services/surfaceflinger/SurfaceFlingerConsumer.cpp
+@@ -25,6 +25,10 @@
+ #include <utils/NativeHandle.h>
+ #include <utils/Trace.h>
+ 
++#ifdef MTK_MT6589
++#include <gui/BufferQueueCore.h>
++#endif
++
+ namespace android {
+ 
+ // ---------------------------------------------------------------------------
+@@ -186,6 +190,10 @@ void SurfaceFlingerConsumer::onSidebandStreamChanged() {
+     }
+ }
+ 
++#ifdef MTK_MT6589
++int SurfaceFlingerConsumer::getConnectedApi () { return (bq != 0) ? bq->getConnectedApi () : -1; }
++#endif
++
+ // ---------------------------------------------------------------------------
+ }; // namespace android
+ 
+diff --git a/services/surfaceflinger/SurfaceFlingerConsumer.h b/services/surfaceflinger/SurfaceFlingerConsumer.h
+index 28f2f6a..b75736d 100644
+--- a/services/surfaceflinger/SurfaceFlingerConsumer.h
++++ b/services/surfaceflinger/SurfaceFlingerConsumer.h
+@@ -19,6 +19,7 @@
+ 
+ #include "DispSync.h"
+ #include <gui/GLConsumer.h>
++#include <gui/BufferQueueCore.h>
+ 
+ namespace android {
+ // ----------------------------------------------------------------------------
+@@ -26,6 +27,7 @@ namespace android {
+ /*
+  * This is a thin wrapper around GLConsumer.
+  */
++class BufferQueueCore;
+ class SurfaceFlingerConsumer : public GLConsumer {
+ public:
+     struct ContentsChangedListener: public FrameAvailableListener {
+@@ -34,7 +36,11 @@ class SurfaceFlingerConsumer : public GLConsumer {
+ 
+     SurfaceFlingerConsumer(const sp<IGraphicBufferConsumer>& consumer,
+             uint32_t tex)
++#ifndef MTK_MT6589
+         : GLConsumer(consumer, tex, GLConsumer::TEXTURE_EXTERNAL, false, false),
++#else
++        : GLConsumer(consumer, tex, GLConsumer::TEXTURE_EXTERNAL, false, false), bq (bq),
++#endif
+           mTransformToDisplayInverse(false)
+     {}
+ 
+@@ -68,6 +74,10 @@ class SurfaceFlingerConsumer : public GLConsumer {
+     sp<NativeHandle> getSidebandStream() const;
+ 
+     nsecs_t computeExpectedPresent(const DispSync& dispSync);
++#ifdef MTK_MT6589
++    // get connected api type, for buffer data conversion condition (aux and hwc)
++    int getConnectedApi();
++#endif
+ 
+ private:
+     virtual void onSidebandStreamChanged();
+@@ -78,6 +88,9 @@ class SurfaceFlingerConsumer : public GLConsumer {
+     // it is displayed onto. This is applied after GLConsumer::mCurrentTransform.
+     // This must be set/read from SurfaceFlinger's main thread.
+     bool mTransformToDisplayInverse;
++#ifdef MTK_MT6589
++    sp<BufferQueueCore> bq;
++#endif
+ };
+ 
+ // ----------------------------------------------------------------------------
