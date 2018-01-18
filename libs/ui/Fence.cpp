@@ -64,6 +64,9 @@ status_t Fence::waitForever(const char* logname) {
     if (err < 0 && errno == ETIME) {
         ALOGE("%s: fence %d didn't signal in %u ms", logname, mFenceFd,
                 warningTimeout);
+#ifdef MTK_MT6589
+        dump(mFenceFd);
+#endif
         err = sync_wait(mFenceFd, TIMEOUT_NEVER);
     }
     return err < 0 ? -errno : status_t(NO_ERROR);

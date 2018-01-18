@@ -19,6 +19,7 @@
 
 #include "DispSync.h"
 #include <gui/GLConsumer.h>
+#include <gui/BufferQueueCore.h>
 
 namespace android {
 // ----------------------------------------------------------------------------
@@ -26,6 +27,7 @@ namespace android {
 /*
  * This is a thin wrapper around GLConsumer.
  */
+class BufferQueueCore;
 class SurfaceFlingerConsumer : public GLConsumer {
 public:
     struct ContentsChangedListener: public FrameAvailableListener {
@@ -34,7 +36,11 @@ public:
 
     SurfaceFlingerConsumer(const sp<IGraphicBufferConsumer>& consumer,
             uint32_t tex)
+#ifndef MTK_MT6589
         : GLConsumer(consumer, tex, GLConsumer::TEXTURE_EXTERNAL, false, false),
+#else
+        : GLConsumer(consumer, tex, GLConsumer::TEXTURE_EXTERNAL, false, false), bq (bq),
+#endif
           mTransformToDisplayInverse(false)
     {}
 
@@ -68,6 +74,10 @@ public:
     sp<NativeHandle> getSidebandStream() const;
 
     nsecs_t computeExpectedPresent(const DispSync& dispSync);
+#ifdef MTK_MT6589
+    // get connected api type, for buffer data conversion condition (aux and hwc)
+    int getConnectedApi();
+#endif
 
 private:
     virtual void onSidebandStreamChanged();
@@ -78,6 +88,9 @@ private:
     // it is displayed onto. This is applied after GLConsumer::mCurrentTransform.
     // This must be set/read from SurfaceFlinger's main thread.
     bool mTransformToDisplayInverse;
+#ifdef MTK_MT6589
+    sp<BufferQueueCore> bq;
+#endif
 };
 
 // ----------------------------------------------------------------------------

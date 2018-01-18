@@ -104,6 +104,10 @@ EGLAPI const char* eglQueryStringImplementationANDROID(EGLDisplay dpy, EGLint na
 
 namespace android {
 
+#ifdef MTK_MT6589
+bool SurfaceFlinger::mContentsDirty;
+#endif
+
 // This is the phase offset in nanoseconds of the software vsync event
 // relative to the vsync event reported by HWComposer.  The software vsync
 // event is when SurfaceFlinger and Choreographer-based applications run each
@@ -207,6 +211,9 @@ SurfaceFlinger::SurfaceFlinger()
 
     ALOGI_IF(mDebugRegion, "showupdates enabled");
     ALOGI_IF(mDebugDDMS, "DDMS debugging enabled");
+#ifdef MTK_MT6589
+    mContentsDirty = false;
+#endif
 }
 
 void SurfaceFlinger::onFirstRef()
@@ -1113,6 +1120,11 @@ void SurfaceFlinger::rebuildLayerStacks() {
                 SurfaceFlinger::computeVisibleRegions(dpyId, layers,
                         hw->getLayerStack(), dirtyRegion, opaqueRegion);
 
+#ifdef MTK_MT6589
+                hw->mLayersSwapRequired |= mContentsDirty;
+                mContentsDirty = false;
+#endif
+
                 const size_t count = layers.size();
                 for (size_t i=0 ; i<count ; i++) {
                     const sp<Layer>& layer(layers[i]);
@@ -1277,9 +1289,21 @@ void SurfaceFlinger::setUpHWComposer() {
                 }
             }
         }
+#ifdef MTK_MT6589
+        // check if any previous layer is processed by gles
+        const bool prevGlesComposition = hwc.hasGlesComposition(DisplayDevice::DISPLAY_PRIMARY);
+#endif
 
         status_t err = hwc.prepare();
         ALOGE_IF(err, "HWComposer::prepare failed (%s)", strerror(-err));
+
+#ifdef MTK_MT6589
+        // do not render transparent region if unnecessary
+        for (size_t dpy=0 ; dpy<mDisplays.size() ; dpy++) {
+            sp<const DisplayDevice> hw(mDisplays[dpy]);
+            checkLayersSwapRequired(hw, prevGlesComposition);
+        }
+#endif
 
         for (size_t dpy=0 ; dpy<mDisplays.size() ; dpy++) {
             sp<const DisplayDevice> hw(mDisplays[dpy]);
@@ -1768,6 +1792,12 @@ void SurfaceFlinger::handleTransactionLocked(uint32_t transactionFlags)
     // some layers might have been removed, so
     // we need to update the regions they're exposing.
     if (mLayersRemoved) {
+#ifdef MTK_MT6589
+       for (size_t dpy=0 ; dpy<mDisplays.size() ; dpy++) {
+          sp<DisplayDevice> hw(mDisplays[dpy]);
+	  hw->mLayersSwapRequired = true;
+       }
+#endif
         mLayersRemoved = false;
         mVisibleRegionsDirty = true;
         const size_t count = layers.size();
@@ -1982,6 +2012,10 @@ void SurfaceFlinger::computeVisibleRegions(size_t dpy,
         // subtract the opaque region covered by the layers above us
         visibleRegion.subtractSelf(aboveOpaqueLayers);
 
+#ifdef MTK_MT6589
+        mContentsDirty |= layer->contentDirty;
+#endif
+
         // compute this layer's dirty region
         if (layer->contentDirty) {
             // we need to invalidate the whole region
@@ -2102,6 +2136,14 @@ void SurfaceFlinger::doDisplayComposition(const sp<const DisplayDevice>& hw,
     }
 
     Region dirtyRegion(inDirtyRegion);
+
+#ifdef MTK_MT6589
+    if (true == inDirtyRegion.isEmpty()) {
+        if(hw->mLayersSwapRequired)
+            hw->mLayersSwapRequired = false;
+        return;
+    }
+#endif
 
     // compute the invalid region
     hw->swapRegion.orSelf(dirtyRegion);
@@ -2876,6 +2918,10 @@ void SurfaceFlinger::setPowerModeInternal(const sp<DisplayDevice>& hw,
     } else {
         getHwComposer().setPowerMode(type, mode);
     }
+#ifdef MTK_MT6589
+    usleep(16667);
+    property_set("sys.ipowin.done", "1");
+#endif
 }
 
 void SurfaceFlinger::setPowerMode(const sp<IBinder>& display, int mode) {
@@ -3405,6 +3451,13 @@ status_t SurfaceFlinger::onTransact(
 }
 
 void SurfaceFlinger::repaintEverything() {
+#ifdef MTK_MT6589
+    for (size_t dpy=0 ; dpy<mDisplays.size() ; dpy++) {
+        sp<DisplayDevice> hw(mDisplays[dpy]);
+        hw->mLayersSwapRequired = true;
+    }
+#endif
+
     android_atomic_or(1, &mRepaintEverything);
     signalTransaction();
 }
@@ -3747,6 +3800,11 @@ status_t SurfaceFlinger::captureScreenImplLocked(
         bool useReadPixels)
 {
     ATRACE_CALL();
+    
+// Rotation artifact problems when useReadPixels is false
+#ifdef MTK_MT6589
+    useReadPixels = true;
+#endif
 
     // get screen geometry
     const uint32_t hw_w = hw->getWidth();
@@ -4068,6 +4126,62 @@ SurfaceFlinger::DisplayDeviceState::DisplayDeviceState(DisplayDevice::DisplayTyp
 }
 
 // ---------------------------------------------------------------------------
+
+#ifdef MTK_MT6589
+bool SurfaceFlinger::getAndClearLayersSwapRequired(int32_t id) {
+		sp<DisplayDevice> hw = NULL;
+    for (size_t dpy = 0; dpy < mDisplays.size(); dpy++) {
+        hw = mDisplays[dpy];
+        if (id == hw->getHwcDisplayId())
+            break;
+    }
+
+    bool ret = hw->mLayersSwapRequired;
+        hw->mLayersSwapRequired = false;
+    return ret;
+}
+
+void SurfaceFlinger::checkLayersSwapRequired(
+    sp<const DisplayDevice>& hw,
+    const bool prevGlesComposition)
+{
+    size_t count = 0;
+    // case 1: Draw and swap if layer removed
+    // case 2: Draw and swap if layer content updated (by transaction) in drawing state
+    // case 4: Draw and swap if debug region is turned on
+    // case 6: Draw and swap if screen is about to return
+    // case 7: Draw and swap if region is invalidated
+    if (!hw->mLayersSwapRequired) {
+        // case 3: Draw and swap if layer buffer dirty (by queueBuffer() and dequeueBuffer())
+        // case 5: When the texture is created, draw and swap to clear the black screen (ONLY ONCE)
+        // case 6: When all layers were handled by HWC but currently need GPU to handle some layers
+
+        HWComposer& hwc(getHwComposer());
+
+        const int32_t id = hw->getHwcDisplayId();
+        if (!prevGlesComposition && hwc.hasGlesComposition(id)) {
+            hw->mLayersSwapRequired = true;
+            return;
+        }
+
+        if (id < 0 || hwc.initCheck() != NO_ERROR) return;
+
+        const Vector< sp<Layer> >& layers(hw->getVisibleLayersSortedByZ());
+        const size_t count = layers.size();
+        HWComposer::LayerListIterator cur = hwc.begin(id);
+        const HWComposer::LayerListIterator end = hwc.end(id);
+        for (size_t i = 0; cur != end && i < count; ++i, ++cur) {
+            const sp<Layer>& layer(layers[i]);
+            if (((cur->getCompositionType() == HWC_FRAMEBUFFER) &&
+                 layer->mBufferDirty) || (layer->mBufferRefCount <= 1)) {
+                hw->mLayersSwapRequired = true;
+                break;
+            }
+        }
+    }
+}
+
+#endif
 
 }; // namespace android
 

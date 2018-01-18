@@ -17,6 +17,10 @@
 #define LOG_TAG "BufferQueueCore"
 #define ATRACE_TAG ATRACE_TAG_GRAPHICS
 //#define LOG_NDEBUG 0
+#ifdef MTK_MT6589
+// this macro is used in BQ_LOG
+#define MTK_COMPILE_BUFFERQUEUECORE
+#endif
 
 #define EGL_EGLEXT_PROTOTYPES
 
@@ -30,6 +34,10 @@
 #include <gui/ISurfaceComposer.h>
 #include <private/gui/ComposerService.h>
 
+#ifdef MTK_MT6589
+#include <gui/mediatek/BufferQueueDump.h>
+#include <gui/mediatek/BufferQueueMonitor.h>
+#endif
 template <typename T>
 static inline T max(T a, T b) { return a > b ? a : b; }
 
@@ -75,9 +83,19 @@ BufferQueueCore::BufferQueueCore(const sp<IGraphicBufferAlloc>& allocator) :
             BQ_LOGE("createGraphicBufferAlloc failed");
         }
     }
+#ifdef MTK_MT6589
+    debugger.onConstructor(this, mConsumerName);
+#endif
 }
 
+#ifdef MTK_MT6589
+BufferQueueCore::~BufferQueueCore() {
+    Mutex::Autolock lock(mMutex);
+    debugger.onDestructor();
+}
+#else
 BufferQueueCore::~BufferQueueCore() {}
+#endif
 
 void BufferQueueCore::dump(String8& result, const char* prefix) const {
     Mutex::Autolock lock(mMutex);
@@ -85,12 +103,23 @@ void BufferQueueCore::dump(String8& result, const char* prefix) const {
     String8 fifo;
     Fifo::const_iterator current(mQueue.begin());
     while (current != mQueue.end()) {
+#ifdef MTK_MT6589
+        // adjust fifo log to improve readability
+        fifo.appendFormat("\n%s    %02d:%p crop=[%d,%d,%d,%d], "
+                "xform=0x%02x, time=%#" PRIx64 ", scale=%s",
+                prefix,
+                current->mSlot, current->mGraphicBuffer.get(),
+                current->mCrop.left, current->mCrop.top, current->mCrop.right,
+                current->mCrop.bottom, current->mTransform, current->mTimestamp,
+                BufferItem::scalingModeName(current->mScalingMode));
+#else
         fifo.appendFormat("%02d:%p crop=[%d,%d,%d,%d], "
                 "xform=0x%02x, time=%#" PRIx64 ", scale=%s\n",
                 current->mSlot, current->mGraphicBuffer.get(),
                 current->mCrop.left, current->mCrop.top, current->mCrop.right,
                 current->mCrop.bottom, current->mTransform, current->mTimestamp,
                 BufferItem::scalingModeName(current->mScalingMode));
+#endif
         ++current;
     }
 
@@ -101,6 +130,18 @@ void BufferQueueCore::dump(String8& result, const char* prefix) const {
             mDefaultWidth, mDefaultHeight, mDefaultBufferFormat, mTransformHint,
             mQueue.size(), fifo.string());
 
+#ifdef MTK_MT6589
+    // add more message for debug
+    result.appendFormat(
+            "%s this=%p (mConsumerName=%s, "
+            "mConnectedApi=%d, mConsumerUsageBits=%#x, mOverrideMaxBufferCount=%d, "
+            "mId=%d, mPid=%d, producer=[%d:%s], consumer=[%d:%s])\n",
+            prefix, this, mConsumerName.string(),
+            mConnectedApi, mConsumerUsageBits, mOverrideMaxBufferCount,
+            debugger.mId, debugger.mPid,
+            debugger.mProducerPid, debugger.mProducerProcName.string(),
+            debugger.mConsumerPid, debugger.mConsumerProcName.string());
+#endif
     // Trim the free buffers so as to not spam the dump
     int maxBufferCount = 0;
     for (int s = BufferQueueDefs::NUM_BUFFER_SLOTS - 1; s >= 0; --s) {
@@ -128,6 +169,10 @@ void BufferQueueCore::dump(String8& result, const char* prefix) const {
 
         result.append("\n");
     }
+#ifdef MTK_MT6589
+    // to trigger static/continuous dump
+    debugger.onDump(result, String8::format("%s    ", prefix));
+#endif
 }
 
 int BufferQueueCore::getMinUndequeuedBufferCountLocked(bool async) const {
@@ -194,7 +239,11 @@ void BufferQueueCore::freeBufferLocked(int slot) {
         mSlots[slot].mNeedsCleanupOnRelease = true;
     }
     mSlots[slot].mBufferState = BufferSlot::FREE;
+#ifdef MTK_MT6589
+    mSlots[slot].mFrameNumber = 0;
+#else
     mSlots[slot].mFrameNumber = UINT32_MAX;
+#endif
     mSlots[slot].mAcquireCalled = false;
     mSlots[slot].mFrameNumber = 0;
 
@@ -204,6 +253,9 @@ void BufferQueueCore::freeBufferLocked(int slot) {
         mSlots[slot].mEglFence = EGL_NO_SYNC_KHR;
     }
     mSlots[slot].mFence = Fence::NO_FENCE;
+#ifdef MTK_MT6589
+    debugger.onFreeBufferLocked(slot);
+#endif
 }
 
 void BufferQueueCore::freeAllBuffersLocked() {

@@ -16,6 +16,15 @@
 
 #define ATRACE_TAG ATRACE_TAG_GRAPHICS
 
+#ifdef MTK_MT6589
+#ifdef MTK_HWC_SUPPORT_V0
+#define HWC_REMOVE_DEPRECATED_VERSIONS 0
+#else
+// Uncomment this to remove support for HWC_DEVICE_API_VERSION_0_3 and older
+#define HWC_REMOVE_DEPRECATED_VERSIONS 1
+#endif
+#endif
+
 #include <inttypes.h>
 #include <math.h>
 #include <stdint.h>
@@ -51,15 +60,25 @@
 
 namespace android {
 
-#define MIN_HWC_HEADER_VERSION HWC_HEADER_VERSION
+#define MIN_HWC_HEADER_VERSION 0
 
 static uint32_t hwcApiVersion(const hwc_composer_device_1_t* hwc) {
     uint32_t hwcVersion = hwc->common.version;
+    if (MIN_HWC_HEADER_VERSION == 0 &&
+            (hwcVersion & HARDWARE_API_VERSION_2_MAJ_MIN_MASK) == 0) {
+        // legacy version encoding
+        hwcVersion <<= 16;
+    }
     return hwcVersion & HARDWARE_API_VERSION_2_MAJ_MIN_MASK;
 }
 
 static uint32_t hwcHeaderVersion(const hwc_composer_device_1_t* hwc) {
     uint32_t hwcVersion = hwc->common.version;
+    if (MIN_HWC_HEADER_VERSION == 0 &&
+            (hwcVersion & HARDWARE_API_VERSION_2_MAJ_MIN_MASK) == 0) {
+        // legacy version encoding
+        hwcVersion <<= 16;
+    }
     return hwcVersion & HARDWARE_API_VERSION_2_HEADER_MASK;
 }
 
@@ -108,6 +127,18 @@ HWComposer::HWComposer(
 
     bool needVSyncThread = true;
 
+// [MTK] {{{
+#if !HWC_REMOVE_DEPRECATED_VERSIONS
+    needVSyncThread = initHWC_0();
+    if (mHwc_0 && mHwc_0->registerProcs) {
+        mCBContext->hwc = this;
+        mCBContext->procs.invalidate = &hook_invalidate;
+        mCBContext->procs.vsync = &hook_vsync;
+        memset(mCBContext->procs.zero, 0, sizeof(mCBContext->procs.zero));
+        mHwc_0->registerProcs(mHwc_0, &mCBContext->procs);
+    }
+#else
+// [MTK] }}}
     // Note: some devices may insist that the FB HAL be opened before HWC.
     int fberr = loadFbHalModule();
     loadHwcModule();
@@ -166,6 +197,9 @@ HWComposer::HWComposer(
             mNumDisplays = 1;
         }
     }
+// [MTK] {{{
+#endif // HWC_REMOVE_DEPRECATED_VERSIONS
+// [MTK] }}}
 
     if (mFbDev) {
         ALOG_ASSERT(!(mHwc && hwcHasApiVersion(mHwc, HWC_DEVICE_API_VERSION_1_1)),
@@ -213,6 +247,11 @@ HWComposer::HWComposer(
 }
 
 HWComposer::~HWComposer() {
+// [MTK] {{{
+#if !HWC_REMOVE_DEPRECATED_VERSIONS
+    deinitHWC_0();
+#else
+// [MTK] }}}
     if (mHwc) {
         eventControl(HWC_DISPLAY_PRIMARY, HWC_EVENT_VSYNC, 0);
     }
@@ -222,6 +261,9 @@ HWComposer::~HWComposer() {
     if (mHwc) {
         hwc_close_1(mHwc);
     }
+// [MTK] {{{
+#endif // HWC_REMOVE_DEPRECATED_VERSIONS
+// [MTK] }}}
     if (mFbDev) {
         framebuffer_close(mFbDev);
     }
@@ -271,6 +313,11 @@ int HWComposer::loadFbHalModule()
 }
 
 status_t HWComposer::initCheck() const {
+// [MTK] {{{
+#if !HWC_REMOVE_DEPRECATED_VERSIONS
+    return mHwc_0 ? NO_ERROR : NO_INIT;
+#endif
+// [MTK] }}}
     return mHwc ? NO_ERROR : NO_INIT;
 }
 
@@ -552,6 +599,12 @@ size_t HWComposer::getCurrentConfig(int disp) const {
 }
 
 void HWComposer::eventControl(int disp, int event, int enabled) {
+// [MTK] {{{
+#if !HWC_REMOVE_DEPRECATED_VERSIONS
+    eventControl_0(disp, event, enabled);
+    return;
+#endif
+// [MTK] }}}
     if (uint32_t(disp)>31 || !mAllocatedDisplayIDs.hasBit(disp)) {
         ALOGD("eventControl ignoring event %d on unallocated disp %d (en=%d)",
               event, disp, enabled);
@@ -604,6 +657,11 @@ void HWComposer::eventControl(int disp, int event, int enabled) {
 }
 
 status_t HWComposer::createWorkList(int32_t id, size_t numLayers) {
+// [MTK] {{{
+#if !HWC_REMOVE_DEPRECATED_VERSIONS
+    return createWorkList_0(id, numLayers);
+#endif
+// [MTK] }}}
     if (uint32_t(id)>31 || !mAllocatedDisplayIDs.hasBit(id)) {
         return BAD_INDEX;
     }
@@ -652,7 +710,16 @@ status_t HWComposer::createWorkList(int32_t id, size_t numLayers) {
                 &disp.framebufferTarget->displayFrame;
             disp.framebufferTarget->acquireFenceFd = -1;
             disp.framebufferTarget->releaseFenceFd = -1;
+#ifdef MTK_MT6589
+            disp.framebufferTarget->ext.connectApi = -1;
+            disp.framebufferTarget->ext.identity = -1;
+            disp.framebufferTarget->ext.width = currentConfig.width;
+            disp.framebufferTarget->ext.height = currentConfig.height;
+            disp.framebufferTarget->ext.stride = currentConfig.width;
+            disp.framebufferTarget->ext.format = disp.format;
+#else
             disp.framebufferTarget->planeAlpha = 0xFF;
+#endif
         }
         disp.list->retireFenceFd = -1;
         disp.list->flags = HWC_GEOMETRY_CHANGED;
@@ -684,10 +751,22 @@ status_t HWComposer::setFramebufferTarget(int32_t id,
     disp.fbTargetHandle = buf->handle;
     disp.framebufferTarget->handle = disp.fbTargetHandle;
     disp.framebufferTarget->acquireFenceFd = acquireFenceFd;
+#ifdef MTK_MT6589
+    disp.framebufferTarget->ext.width = buf->width;
+    disp.framebufferTarget->ext.height = buf->height;
+    disp.framebufferTarget->ext.stride = buf->stride;
+    disp.framebufferTarget->ext.format = buf->format;
+#endif
     return NO_ERROR;
 }
 
 status_t HWComposer::prepare() {
+// [MTK] {{{
+    ATRACE_CALL();
+#if !HWC_REMOVE_DEPRECATED_VERSIONS
+    return prepare_0();
+#endif
+// [MTK] }}}
     Mutex::Autolock _l(mDrawLock);
     for (size_t i=0 ; i<mNumDisplays ; i++) {
         DisplayData& disp(mDisplayData[i]);
@@ -715,6 +794,14 @@ status_t HWComposer::prepare() {
             } else {
                 mLists[i]->dpy = EGL_NO_DISPLAY;
                 mLists[i]->sur = EGL_NO_SURFACE;
+#ifdef MTK_MT6589
+                // External Display related
+                // (only need for HWC_DEVICE_API_VERSION_1_0 or lower version)
+                if (i == 0) {
+                    sp<const DisplayDevice> hw(mFlinger->getDefaultDisplayDevice());
+                    mLists[i]->flags |= hw->getOrientation() << 16;
+                }
+#endif
             }
         }
     }
@@ -827,6 +914,12 @@ sp<Fence> HWComposer::getAndResetReleaseFence(int32_t id) {
 }
 
 status_t HWComposer::commit() {
+// [MTK] {{{
+    ATRACE_CALL();
+#if !HWC_REMOVE_DEPRECATED_VERSIONS
+    return commit_0();
+#endif
+// [MTK] }}}
     int err = NO_ERROR;
     if (mHwc) {
         if (!hwcHasApiVersion(mHwc, HWC_DEVICE_API_VERSION_1_1)) {
@@ -839,6 +932,12 @@ status_t HWComposer::commit() {
 
         for (size_t i=VIRTUAL_DISPLAY_ID_BASE; i<mNumDisplays; i++) {
             DisplayData& disp(mDisplayData[i]);
+#ifdef MTK_MT6589
+        // get layer swap information and raise flag if necessary
+            if (disp.list && mFlinger->getAndClearLayersSwapRequired(i)) {
+                disp.list->flags |= HWC_SWAP_REQUIRED;
+            }
+#endif
             if (disp.outbufHandle) {
                 mLists[i]->outbuf = disp.outbufHandle;
                 mLists[i]->outbufAcquireFenceFd =
@@ -858,6 +957,12 @@ status_t HWComposer::commit() {
                     disp.list->retireFenceFd = -1;
                 }
                 disp.list->flags &= ~HWC_GEOMETRY_CHANGED;
+                // [MTK] {{{
+                // clear additional flags
+                disp.list->flags &=
+                    ~(HWC_SWAP_REQUIRED | HWC_LAYERSCREENSHOT_EXIST |
+                      HWC_SCREEN_FROZEN | HWC_ORIENTATION_MASK);
+                // [MTK] }}}
             }
         }
     }
@@ -1053,7 +1158,9 @@ public:
     }
     virtual void setPlaneAlpha(uint8_t alpha) {
         if (hwcHasApiVersion(mHwc, HWC_DEVICE_API_VERSION_1_2)) {
+#ifndef MTK_MT6589
             getLayer()->planeAlpha = alpha;
+#endif
         } else {
             if (alpha < 0xFF) {
                 getLayer()->flags |= HWC_SKIP_LAYER;
@@ -1072,7 +1179,17 @@ public:
         l->visibleRegionScreen.rects = NULL;
         l->acquireFenceFd = -1;
         l->releaseFenceFd = -1;
+#ifdef MTK_MT6589
+        l->ext.connectApi = -1;
+        l->ext.identity = -1;
+        l->ext.width = 0;
+        l->ext.height = 0;
+        l->ext.stride = 0;
+        l->ext.format = 0;
+#else
         l->planeAlpha = 0xFF;
+#endif
+
     }
     virtual void setSkip(bool skip) {
         if (skip) {
@@ -1169,6 +1286,13 @@ public:
                 getLayer()->compositionType = HWC_FRAMEBUFFER;
             }
             getLayer()->handle = buffer->handle;
+#ifdef MTK_MT6589
+            getLayer()->ext.width = buffer->width;
+            getLayer()->ext.height = buffer->height;
+            getLayer()->ext.stride = buffer->stride;
+            getLayer()->ext.format = buffer->format;
+            getLayer()->ext.mva = buffer->getMva();
+#endif
         }
     }
     virtual void onDisplayed() {
@@ -1183,12 +1307,56 @@ public:
 
         getLayer()->acquireFenceFd = -1;
     }
+#ifdef MTK_MT6589
+    virtual int getMva() {
+        return getLayer()->ext.mva;
+    }
+    virtual void setLayerType(uint32_t type) {
+    }
+    virtual void setSecure(bool secure) {
+        if (secure)
+            getLayer()->flags |= HWC_SECURE_LAYER;
+        else
+            getLayer()->flags &= ~HWC_SECURE_LAYER;
+    }
+    virtual void setDirty(bool dirty) {
+        if (dirty)
+            getLayer()->flags |= HWC_DIRTY_LAYER;
+        else
+            getLayer()->flags &= ~HWC_DIRTY_LAYER;
+    }
+    virtual void setConnectedApi(int32_t api) {
+        getLayer()->ext.connectApi = api;
+    }
+    virtual void setIdentity(int32_t id) {
+        getLayer()->ext.identity = id;
+    }
+    virtual void setFillColor(struct hwc_color color) {
+        getLayer()->ext.fillColor = color;
+    }
+    virtual void setMatrix(const Transform& tr) {
+        float *m = getLayer()->ext.transformMatrix;
+        for (int i = 0, j = 0; i < 9; i += 3, j++) {
+            m[i + 0] = tr[0][j];
+            m[i + 1] = tr[1][j];
+            m[i + 2] = tr[2][j];
+        }
+    }
+    virtual void setStereosFlags(uint32_t flag) {
+        getLayer()->ext.extraFlags = flag;
+    }
+#endif
 };
 
 /*
  * returns an iterator initialized at a given index in the layer list
  */
 HWComposer::LayerListIterator HWComposer::getLayerIterator(int32_t id, size_t index) {
+// [MTK] {{{
+#if !HWC_REMOVE_DEPRECATED_VERSIONS
+    return getLayerIterator_0(id, index);
+#endif
+// [MTK] }}}
     if (uint32_t(id)>31 || !mAllocatedDisplayIDs.hasBit(id)) {
         return LayerListIterator();
     }
@@ -1210,6 +1378,11 @@ HWComposer::LayerListIterator HWComposer::begin(int32_t id) {
  * returns an iterator on the end of the layer list
  */
 HWComposer::LayerListIterator HWComposer::end(int32_t id) {
+// [MTK] {{{
+#if !HWC_REMOVE_DEPRECATED_VERSIONS
+    return end_0(id);
+#endif
+// [MTK] }}}
     size_t numLayers = 0;
     if (uint32_t(id) <= 31 && mAllocatedDisplayIDs.hasBit(id)) {
         const DisplayData& disp(mDisplayData[id]);
@@ -1252,6 +1425,11 @@ static String8 getFormatStr(PixelFormat format) {
 
 void HWComposer::dump(String8& result) const {
     Mutex::Autolock _l(mDrawLock);
+// [MTK] {{{
+#if !HWC_REMOVE_DEPRECATED_VERSIONS
+    dump_0(result, buffer, SIZE);
+#endif
+// [MTK] }}}
     if (mHwc) {
         result.appendFormat("Hardware Composer state (version %08x):\n", hwcApiVersion(mHwc));
         result.appendFormat("  mDebugForceFakeVSync=%d\n", mDebugForceFakeVSync);
@@ -1359,6 +1537,12 @@ void HWComposer::dump(String8& result) const {
         mHwc->dump(mHwc, buffer, SIZE);
         result.append(buffer);
     }
+    // [MTK] {{{
+    // 20120814: add property function for debug purpose
+//    if (mVSyncThread != NULL) {
+//        mVSyncThread->setProperty();
+//    }
+    // [MTK] }}}
 }
 
 // ---------------------------------------------------------------------------

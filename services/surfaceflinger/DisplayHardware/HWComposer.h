@@ -44,6 +44,25 @@ struct hwc_layer_1;
 struct hwc_procs;
 struct framebuffer_device_t;
 
+#ifdef MTK_MT6589
+#include "Transform.h"
+
+#ifndef HWC_REMOVE_DEPRECATED_VERSIONS
+#ifdef MTK_HWC_SUPPORT_V0
+#define HWC_REMOVE_DEPRECATED_VERSIONS 0
+#else
+#define HWC_REMOVE_DEPRECATED_VERSIONS 1
+#endif // MTK_HWC_SUPPORT_V0
+#endif // HWC_REMOVE_DEPRECATED_VERSIONS
+
+#if !HWC_REMOVE_DEPRECATED_VERSIONS
+struct hwc_composer_device;
+struct hwc_layer_list;
+struct hwc_layer;
+#endif
+
+struct hwc_color;
+#endif
 namespace android {
 // ---------------------------------------------------------------------------
 
@@ -193,6 +212,18 @@ public:
         virtual void setAcquireFenceFd(int fenceFd) = 0;
         virtual void setPlaneAlpha(uint8_t alpha) = 0;
         virtual void onDisplayed() = 0;
+
+#ifdef MTK_MT6589
+        virtual int getMva() = 0;
+        virtual void setLayerType(uint32_t type) = 0;
+        virtual void setSecure(bool secure) = 0;
+        virtual void setDirty(bool dirty) = 0;
+        virtual void setConnectedApi(int32_t api) = 0;
+        virtual void setIdentity(int32_t id) = 0;
+        virtual void setFillColor(struct hwc_color color) = 0;
+        virtual void setMatrix(const Transform& tr) = 0;
+        virtual void setStereosFlags(uint32_t flag) = 0;
+#endif
     };
 
     /*
@@ -320,6 +351,10 @@ public:
     public:
         VSyncThread(HWComposer& hwc);
         void setEnabled(bool enabled);
+        // [MTK] {{{
+        // 20120814: add property function for debug purpose
+//        void setProperty();
+        // [MTK] }}}
     };
 
     friend class VSyncThread;
@@ -446,6 +481,34 @@ private:
     float mDynThreshold;
     bool canHandleOverlapArea(int32_t id, Rect unionDr);
 #endif
+
+    // [MTK] {{{
+private:
+    nsecs_t getRefreshPeriod() const;
+
+#if !HWC_REMOVE_DEPRECATED_VERSIONS
+    bool initHWC_0();
+    void deinitHWC_0();
+    void loadHwcModule_0();
+
+    LayerListIterator getLayerIterator_0(int32_t id, size_t index);
+
+    status_t prepare_0();
+    status_t commit_0();
+    status_t release_0(int disp) const;
+
+    status_t createWorkList_0(int32_t id, size_t numLayers);
+    void freeWorkList();
+
+    void eventControl_0(int disp, int event, int enabled);
+
+    LayerListIterator end_0(int32_t id);
+    void dump_0(String8& out, char* scratch, size_t SIZE) const;
+
+    struct hwc_composer_device*     mHwc_0;
+    struct hwc_layer_list*          mList;
+#endif // HWC_REMOVE_DEPRECATED_VERSIONS
+    // [MTK] }}}
 };
 
 // ---------------------------------------------------------------------------

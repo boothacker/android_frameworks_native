@@ -46,6 +46,27 @@ LOCAL_SHARED_LIBRARIES := \
 	libutils \
 	liblog
 
+LOCAL_SRC_FILES += \
+      mediatek/BufferQueueDebug.cpp \
+	mediatek/BufferQueueDump.cpp \
+	mediatek/BufferQueueMonitor.cpp 
+
+	LOCAL_C_INCLUDES += $(TOP)/hardware/mediatek/dpframework/inc \
+  	      		  $(TOP)/hardware/mediatek/ui_ext/inc
+      LOCAL_CFLAGS := -DLOG_TAG=\"GLConsumer\"
+      LOCAL_CFLAGS += -DUSE_DP
+
+ 	LOCAL_SHARED_LIBRARIES += \
+	libdpframework \
+	libdl \
+	libhardware \
+	libui_ext \
+	libselinux
+
+
+LOCAL_CFLAGS += -DMTK_MT6589
+
+
 # Executed only on QCOM BSPs
 ifeq ($(TARGET_USES_QCOM_BSP),true)
     LOCAL_C_INCLUDES += $(call project-path-for,qcom-display)/libgralloc

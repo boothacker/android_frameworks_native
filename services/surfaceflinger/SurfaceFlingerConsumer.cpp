@@ -25,6 +25,10 @@
 #include <utils/NativeHandle.h>
 #include <utils/Trace.h>
 
+#ifdef MTK_MT6589
+#include <gui/BufferQueueCore.h>
+#endif
+
 namespace android {
 
 // ---------------------------------------------------------------------------
@@ -185,6 +189,10 @@ void SurfaceFlingerConsumer::onSidebandStreamChanged() {
         listener->onSidebandStreamChanged();
     }
 }
+
+#ifdef MTK_MT6589
+int SurfaceFlingerConsumer::getConnectedApi () { return (bq != 0) ? bq->getConnectedApi () : -1; }
+#endif
 
 // ---------------------------------------------------------------------------
 }; // namespace android

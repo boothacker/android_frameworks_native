@@ -19,7 +19,6 @@
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
-
 #include <gui/IGraphicBufferProducer.h>
 #include <gui/BufferQueue.h>
 #include <gui/ConsumerBase.h>
@@ -30,6 +29,7 @@
 #include <utils/Vector.h>
 #include <utils/threads.h>
 
+#include <gui/mediatek/BufferQueueDebug.h>
 namespace android {
 // ----------------------------------------------------------------------------
 
@@ -490,6 +490,84 @@ private:
     // mode and releaseTexImage() has been called
     static sp<GraphicBuffer> sReleasedTexImageBuffer;
     sp<EglImage> mReleasedTexImage;
+
+/*
+#ifdef MTK_MT6589
+
+private:
+    // this condition is set to
+    // 1) TRUE when SurfaceTexture::updateTexImage() or
+    //    Layer::onDraw() is called
+    // 2) FALSE after buffer format conversion or
+    //    if the current texture is INVALID_BUFFER_SLOT
+    bool mAuxSlotConvert;
+
+    // this condition is set to
+    // 1) TRUE after the texture is converted to the appropriate color format
+    // 2) FALSE after the converted textured is already bound to the aux buffer slot
+    bool mAuxSlotDirty;
+
+    // aux buffer slot for format convert
+    // for video or camera data input not match texture format required by G3D
+    struct AuxSlot {
+        AuxSlot()
+        : mMva(0) {
+        }
+        // graphic buffer
+        Slot    slot;
+        // EGL information
+//        EglSlot eglSlot();
+//	  sp<EglImage> mEglImage; 
+        // m4u usage
+        void *mMva;
+    } mAuxSlot[2];
+    AuxSlot *mBackAuxSlot;
+    AuxSlot *mFrontAuxSlot;
+
+    // for drawing debug line
+    bool mLine;
+
+    // debug line count
+    uint32_t mLineCnt;
+
+    // clear enternal aux buffer data
+    status_t freeAuxSlotLocked(AuxSlot &src);
+
+    // dump internal aux buffer if exists
+    // currently, all aux buffer is in RGBA format
+    status_t dumpAux() const;
+
+public:
+    // get connected api type for debug purpose
+    int getConnectedApi() const { return (mConsumer != NULL) ? mConsumer->getConnectedApi() : -1; }
+
+    // for check if conversion still required
+    bool isAuxSlotNeedConvert() const { return mAuxSlotConvert; }
+
+    // check if need to bind new converted buffer data
+    bool isAuxSlotDirty() const { return mAuxSlotDirty; }
+
+    // bind texture to the aux buffer slot
+    status_t bindToAuxSlotLocked();
+
+    // convert current using buffer slot to aux slot
+    status_t convertToAuxSlotLocked(bool isForce);
+
+    // (for where not locked yet, add lock and call real function)
+    status_t bindToAuxSlot();
+    status_t convertToAuxSlot(bool isForce);
+
+    // force convert buffer before released
+    status_t forceAuxConversionLocked();
+
+    // check if color pixel format is supported by HW
+    status_t checkPixelFormatSupported() const;
+
+    // need to use destructor for its own buffer release
+    ~GLConsumer() { abandon(); };
+
+#endif
+*/
 };
 
 // ----------------------------------------------------------------------------

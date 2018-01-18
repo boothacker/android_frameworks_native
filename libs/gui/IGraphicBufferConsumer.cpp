@@ -411,7 +411,11 @@ public:
         data.writeString8(result);
         data.writeString8(String8(prefix ? prefix : ""));
         remote()->transact(DUMP, data, &reply);
+#ifdef MTK_MT6589
+        result = reply.readString8();
+#else
         reply.readString8();
+#endif
     }
 };
 

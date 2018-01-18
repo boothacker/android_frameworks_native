@@ -220,6 +220,14 @@ sp<Surface> SurfaceControl::getSurface() const
     }
     return mSurfaceData;
 }
+#ifdef MTK_MT6589
+status_t SurfaceControl::setFlagsEx(uint32_t flags, uint32_t mask) {
+    status_t err = validate();
+    if (err < 0) return err;
+    const sp<SurfaceComposerClient>& client(mClient);
+    return client->setFlagsEx(mHandle, flags, mask);
+}
+#endif
 
 // ----------------------------------------------------------------------------
 }; // namespace android

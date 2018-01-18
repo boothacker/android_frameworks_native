@@ -28,7 +28,39 @@
 #include <utils/StrongPointer.h>
 #include <utils/Trace.h>
 #include <utils/Vector.h>
+#ifdef MTK_MT6589
+#include <cutils/xlog.h>
+// class BufferQueueDebug cannot include by forward declaration.
+// Because of the performance issue, BufferQueueCore holds a BufferQueueDebug
+// object directly.
+#include <gui/mediatek/BufferQueueDebug.h>
+#ifdef MTK_COMPILE_BUFFERQUEUECORE
+#define BQ_LOGV(x, ...) XLOGV("[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), this, debugger.mId, debugger.mConnectedApi, debugger.mProducerPid, debugger.mConsumerPid, ##__VA_ARGS__)
+#define BQ_LOGD(x, ...) XLOGD("[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), this, debugger.mId, debugger.mConnectedApi, debugger.mProducerPid, debugger.mConsumerPid, ##__VA_ARGS__)
+#define BQ_LOGI(x, ...) XLOGI("[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), this, debugger.mId, debugger.mConnectedApi, debugger.mProducerPid, debugger.mConsumerPid, ##__VA_ARGS__)
+#define BQ_LOGW(x, ...) XLOGW("[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), this, debugger.mId, debugger.mConnectedApi, debugger.mProducerPid, debugger.mConsumerPid, ##__VA_ARGS__)
+#define BQ_LOGE(x, ...) XLOGE("[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), this, debugger.mId, debugger.mConnectedApi, debugger.mProducerPid, debugger.mConsumerPid, ##__VA_ARGS__)
+#else // MTK_COMPILE_BUFFERQUEUECORE
+#define BQ_LOGV(x, ...) XLOGV("[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), mCore.get(), mCore->debugger.mId, mCore->debugger.mConnectedApi, mCore->debugger.mProducerPid, mCore->debugger.mConsumerPid, ##__VA_ARGS__)
+#define BQ_LOGD(x, ...) XLOGD("[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), mCore.get(), mCore->debugger.mId, mCore->debugger.mConnectedApi, mCore->debugger.mProducerPid, mCore->debugger.mConsumerPid, ##__VA_ARGS__)
+#define BQ_LOGI(x, ...) XLOGI("[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), mCore.get(), mCore->debugger.mId, mCore->debugger.mConnectedApi, mCore->debugger.mProducerPid, mCore->debugger.mConsumerPid, ##__VA_ARGS__)
+#define BQ_LOGW(x, ...) XLOGW("[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), mCore.get(), mCore->debugger.mId, mCore->debugger.mConnectedApi, mCore->debugger.mProducerPid, mCore->debugger.mConsumerPid, ##__VA_ARGS__)
+#define BQ_LOGE(x, ...) XLOGE("[%s](this:%p,id:%d,api:%d,p:%d,c:%d) "x, mConsumerName.string(), mCore.get(), mCore->debugger.mId, mCore->debugger.mConnectedApi, mCore->debugger.mProducerPid, mCore->debugger.mConsumerPid, ##__VA_ARGS__)
+#endif // MTK_COMPILE_BUFFERQUEUECORE
 
+#define ATRACE_BUFFER_INDEX(index)                                                  \
+    if (ATRACE_ENABLED()) {                                                         \
+        char ___traceBuf[1024];                                                     \
+        if (mCore->mSlots[index].mGraphicBuffer != NULL) {                                 \
+            snprintf(___traceBuf, 1024, "%s: %d (h:%p)", mConsumerName.string(),    \
+                (index), (mCore->mSlots[index].mGraphicBuffer->handle));                   \
+        } else {                                                                    \
+            snprintf(___traceBuf, 1024, "%s: %d", mConsumerName.string(),           \
+                (index));                                                           \
+        }                                                                           \
+        android::ScopedTrace ___bufTracer(ATRACE_TAG, ___traceBuf);                 \
+    }
+#else // MTK_MT6589
 #define BQ_LOGV(x, ...) ALOGV("[%s] "x, mConsumerName.string(), ##__VA_ARGS__)
 #define BQ_LOGD(x, ...) ALOGD("[%s] "x, mConsumerName.string(), ##__VA_ARGS__)
 #define BQ_LOGI(x, ...) ALOGI("[%s] "x, mConsumerName.string(), ##__VA_ARGS__)
@@ -42,6 +74,7 @@
                 mCore->mConsumerName.string(), (index));             \
         android::ScopedTrace ___bufTracer(ATRACE_TAG, ___traceBuf);  \
     }
+#endif // MTK_MT6589
 
 namespace android {
 
@@ -54,6 +87,11 @@ class BufferQueueCore : public virtual RefBase {
 
     friend class BufferQueueProducer;
     friend class BufferQueueConsumer;
+//#ifdef MTK_MT6589
+    friend class BufferQueueDump;
+    friend class BufferQueueDebug;
+    friend class BufferQueueMonitor;
+//#endif
 
 public:
     // Used as a placeholder slot number when the value isn't pointing to an
@@ -246,6 +284,14 @@ private:
     // mIsAllocatingCondition is a condition variable used by producers to wait until mIsAllocating
     // becomes false.
     mutable Condition mIsAllocatingCondition;
+
+#ifdef MTK_MT6589
+public:
+    BufferQueueDebug debugger;
+    // get connected api type for hwc usage
+    int32_t getConnectedApi() const { return mConnectedApi; }
+    static status_t drawDebugLineToGraphicBuffer(sp<GraphicBuffer> gb, uint32_t cnt, uint8_t val = 0xff);
+#endif // MTK_MT6589 
 }; // class BufferQueueCore
 
 } // namespace android

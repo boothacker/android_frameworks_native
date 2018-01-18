@@ -241,6 +241,11 @@ private:
     int mActiveConfig;
     // Panel is inverse mounted
     int mPanelInverseMounted;
+
+#ifdef MTK_MT6589
+public:
+    mutable bool mLayersSwapRequired;
+#endif
 };
 
 }; // namespace android

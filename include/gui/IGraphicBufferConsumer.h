@@ -313,6 +313,16 @@ public:
 
 public:
     DECLARE_META_INTERFACE(GraphicBufferConsumer);
+#ifdef MTK_MT6589
+public:
+    // for real type check
+//    enum { TYPE_NONE = -1, TYPE_BufferQueue, TYPE_SurfaceTextureLayer };
+    enum { NO_CONNECTED_API = 0 };
+
+//    virtual int32_t getType() const { return TYPE_NONE; }
+
+    virtual int32_t getConnectedApi() const { return NO_CONNECTED_API; }
+#endif
 };
 
 // ----------------------------------------------------------------------------

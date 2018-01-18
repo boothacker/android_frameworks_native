@@ -122,6 +122,12 @@ void ConsumerBase::onBuffersReleased() {
         // Nothing to do if we're already abandoned.
         return;
     }
+/*
+#ifdef MTK_MT6589
+    // force conversion here for last buffer
+    forceAuxConversionLocked();
+#endif
+*/
 
     uint64_t mask = 0;
     mConsumer->getReleasedBuffers(&mask);

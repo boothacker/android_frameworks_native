@@ -118,6 +118,12 @@ public:
         // dependent.
         Region activeTransparentRegion;
         Region requestedTransparentRegion;
+#ifdef MTK_MT6589
+        uint32_t flagsEx;
+        uint32_t usageEx;
+        uint32_t stConnectedApi;
+        uint32_t stCurrentTransform;
+#endif
     };
 
     // -----------------------------------------------------------------------
@@ -334,6 +340,11 @@ public:
     bool hasNewFrame() const;
 #endif
 
+#ifdef MTK_MT6589
+    bool mBufferDirty;
+    mutable uint64_t mBufferRefCount;
+#endif
+
 protected:
     // constant
     sp<SurfaceFlinger> mFlinger;
@@ -439,6 +450,28 @@ private:
 
     // Transform hint assigned for the layer
     uint32_t mTransformHint;
+#ifdef MTK_MT6589
+/*
+    void dumpActiveBuffer() const;            // debug info
+    
+    // for continuous buffers dump
+    int mContBufsDumpById;
+    uint32_t mBackupBufsIndex;
+    uint32_t mBackupBufsMax; 
+    Vector< sp<GraphicBuffer> > mBackBufs;
+    
+//    virtual void setContBufsDumpById(int identity);        
+    void dumpGraphicBuffer(sp<GraphicBuffer> buf, int index) const;
+    void backupProcess(void* dst, void* src, size_t size);
+*/
+    const uint32_t mIdentity;uint32_t getIdentity() const { return mIdentity; }
+    static int32_t sIdentity;
+
+//public:
+//    void dumpContinuousBuffer() const;
+//    virtual void activeBufferBackup();
+//    virtual bool queryBackupBufs(){return mQueuedFrames > 0;};
+#endif
 };
 
 // ---------------------------------------------------------------------------

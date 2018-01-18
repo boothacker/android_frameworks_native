@@ -187,6 +187,10 @@ public:
     static void closeGlobalTransaction(bool synchronous) {
         Composer::getInstance().closeGlobalTransactionImpl(synchronous);
     }
+#ifdef MTK_MT6589
+    status_t setFlagsEx(const sp<SurfaceComposerClient>& client, const sp<IBinder>& id,
+            uint32_t flags, uint32_t mask);
+#endif
 };
 
 ANDROID_SINGLETON_STATIC_INSTANCE(Composer);
@@ -501,6 +505,22 @@ status_t Composer::setOrientation(int orientation) {
 }
 #endif
 
+#ifdef MTK_MT6589
+status_t Composer::setFlagsEx(const sp<SurfaceComposerClient>& client,
+        const sp<IBinder>& id, uint32_t flags,
+        uint32_t mask) {
+    Mutex::Autolock _l(mLock);
+    layer_state_t* s = getLayerStateLocked(client, id);
+    if (!s)
+        return BAD_INDEX;
+    s->what |= layer_state_t::eVisibilityChanged;
+    s->flagsEx &= ~mask;
+    s->flagsEx |= (flags & mask);
+    s->maskEx |= mask;
+    return NO_ERROR;
+}
+#endif
+
 // ---------------------------------------------------------------------------
 
 SurfaceComposerClient::SurfaceComposerClient()
@@ -749,6 +769,12 @@ void SurfaceComposerClient::setDisplaySize(const sp<IBinder>& token,
         uint32_t width, uint32_t height) {
     Composer::getInstance().setDisplaySize(token, width, height);
 }
+#ifdef MTK_MT6589
+status_t SurfaceComposerClient::setFlagsEx(const sp<IBinder>& id, uint32_t flags,
+        uint32_t mask) {
+    return getComposer().setFlagsEx(this, id, flags, mask);
+}
+#endif
 
 // ----------------------------------------------------------------------------
 

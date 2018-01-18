@@ -180,6 +180,16 @@ status_t BufferQueueConsumer::acquireBuffer(BufferItem* outBuffer,
         outBuffer->mGraphicBuffer = NULL;
     }
 
+#ifdef MTK_MT6589
+    // 1. for dump, buffers holded by BufferQueueDump should be updated
+    // 2. to draw white debug line
+    mCore->debugger.onAcquire(
+            slot,
+            front->mGraphicBuffer,
+            front->mFence,
+            front->mTimestamp,
+            outBuffer);
+#endif
     mCore->mQueue.erase(front);
 
     // We might have freed a slot while dropping old buffers, or the producer
@@ -343,6 +353,10 @@ status_t BufferQueueConsumer::releaseBuffer(int slot, uint64_t frameNumber,
         }
 
         mCore->mDequeueCondition.broadcast();
+#ifdef MTK_MT6589
+        // for dump, buffers holded by BufferQueueDump should be updated
+        mCore->debugger.onRelease(slot);
+#endif
     } // Autolock scope
 
     // Call back without lock held
@@ -361,9 +375,14 @@ status_t BufferQueueConsumer::connect(
         BQ_LOGE("connect(C): consumerListener may not be NULL");
         return BAD_VALUE;
     }
+#ifdef MTK_MT6589
+    // to set process's name and pid of consumer
+    mCore->debugger.onConsumerConnect(consumerListener, controlledByApp);
+#else
 
     BQ_LOGV("connect(C): controlledByApp=%s",
             controlledByApp ? "true" : "false");
+#endif
 
     Mutex::Autolock lock(mCore->mMutex);
 
@@ -381,7 +400,13 @@ status_t BufferQueueConsumer::connect(
 status_t BufferQueueConsumer::disconnect() {
     ATRACE_CALL();
 
+#ifdef MTK_MT6589
+    // to reset pid of the consumer
+    mCore->debugger.onConsumerDisconnectHead();
+    BQ_LOGI("disconnect(C)");
+#else
     BQ_LOGV("disconnect(C)");
+#endif
 
     Mutex::Autolock lock(mCore->mMutex);
 
@@ -395,6 +420,11 @@ status_t BufferQueueConsumer::disconnect() {
     mCore->mQueue.clear();
     mCore->freeAllBuffersLocked();
     mCore->mDequeueCondition.broadcast();
+#ifdef MTK_MT6589
+    // NOTE: this line must be placed after lock(mMutex)
+    // for dump, buffers holded by BufferQueueDump should be updated
+    mCore->debugger.onConsumerDisconnectTail();
+#endif
     return NO_ERROR;
 }
 
@@ -504,6 +534,10 @@ void BufferQueueConsumer::setConsumerName(const String8& name) {
     Mutex::Autolock lock(mCore->mMutex);
     mCore->mConsumerName = name;
     mConsumerName = name;
+#ifdef MTK_MT6589
+    // update dump info and prepare for drawing debug line
+    mCore->debugger.onSetConsumerName(name);
+#endif
 }
 
 status_t BufferQueueConsumer::setDefaultBufferFormat(uint32_t defaultFormat) {

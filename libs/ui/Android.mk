@@ -34,12 +34,25 @@ LOCAL_SHARED_LIBRARIES := \
 	libutils \
 	liblog
 
+	LOCAL_SRC_FILES += \
+		mediatek/Fence.cpp \
+		mediatek/IDumpTunnel.cpp \
+		mediatek/RefBaseDump.cpp
+
+LOCAL_SHARED_LIBRARIES += \
+	libbinder \
+	libdl
+	
 ifneq ($(BOARD_FRAMEBUFFER_FORCE_FORMAT),)
 LOCAL_CFLAGS += -DFRAMEBUFFER_FORCE_FORMAT=$(BOARD_FRAMEBUFFER_FORCE_FORMAT)
 endif
 
 ifeq ($(BOARD_HAVE_PIXEL_FORMAT_INFO),true)
 LOCAL_CFLAGS += -DHAVE_PIXEL_FORMAT_INFO
+endif
+
+ifeq ($(TARGET_BOARD_PLATFORM),mt6589)
+LOCAL_CFLAGS += -DMTK_MT6589
 endif
 
 LOCAL_MODULE:= libui

@@ -190,6 +190,11 @@ private:
                 status_t                    mStatus;
                 sp<ISurfaceComposerClient>  mClient;
                 Composer&                   mComposer;
+#ifdef MTK_MT6589
+public:
+    // For setting extra surface flags
+    status_t    setFlagsEx(const sp<IBinder>& id, uint32_t flags, uint32_t mask);
+#endif
 };
 
 // ---------------------------------------------------------------------------

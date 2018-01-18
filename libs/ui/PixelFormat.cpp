@@ -53,6 +53,10 @@ static Info const sPixelFormatInfos[] = {
         { 1,  8, { 0, 0,   8, 0,   8, 0,   8, 0 }, PixelFormatInfo::L    },
         { 2, 16, {16, 8,   8, 0,   8, 0,   8, 0 }, PixelFormatInfo::LA   },
         { 1,  8, { 0, 0,   8, 5,   5, 2,   2, 0 }, PixelFormatInfo::RGB  },
+#ifdef MTK_MT6589
+        // SGX_BGRX_8888
+        { 4, 24, { 0, 0,  24,16,  16, 8,   8, 0 }, PixelFormatInfo::RGB  },
+#endif
 };
 
 static const Info* gGetPixelFormatTable(size_t* numEntries) {
@@ -96,7 +100,11 @@ status_t getPixelFormatInfo(PixelFormat format, PixelFormatInfo* info)
      done:
         info->format = format;
         info->components = COMPONENT_YUV;
+#ifdef MTK_MT6589
+        info->bytesPerPixel = 2;
+#else
         info->bytesPerPixel = 1;
+#endif
         info->h_alpha = 0;
         info->l_alpha = 0;
         info->h_red = info->h_green = info->h_blue = 8;
@@ -104,9 +112,17 @@ status_t getPixelFormatInfo(PixelFormat format, PixelFormatInfo* info)
         return NO_ERROR;
     }
 
+#ifdef MTK_MT6589
+    // for SGX BGRX 8888
+    int index = (format == 0x1FF) ? 12 : format;
+    size_t numEntries;
+    const Info *i = gGetPixelFormatTable(&numEntries) + index;
+    bool valid = uint32_t(index) < numEntries;
+#else
     size_t numEntries;
     const Info *i = gGetPixelFormatTable(&numEntries) + format;
     bool valid = uint32_t(format) < numEntries;
+#endif
     if (!valid) {
         return BAD_INDEX;
     }

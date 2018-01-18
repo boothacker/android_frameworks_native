@@ -27,6 +27,10 @@
 #include <utils/threads.h>
 #include <utils/KeyedVector.h>
 
+#ifdef MTK_MT6589
+#include <gui/BufferQueueCore.h>
+#endif
+
 struct ANativeWindow_Buffer;
 
 namespace android {
@@ -315,6 +319,14 @@ private:
     bool mDequeuedOnce;
 #endif
 
+#ifdef MTK_MT6589
+private:
+    // to track current client connection type
+    int mConnectedApi;
+
+    // to track queueBuffer() FPS
+    FpsCounter mQueueFps;
+#endif
 };
 
 }; // namespace android

@@ -233,6 +233,12 @@ protected:
     //
     // This mutex is intended to be locked by derived classes.
     mutable Mutex mMutex;
+/*
+#ifdef MTK_MT6589
+public:
+    virtual status_t forceAuxConversionLocked() { return NO_ERROR; }
+#endif
+*/
 };
 
 // ----------------------------------------------------------------------------

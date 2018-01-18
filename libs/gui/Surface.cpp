@@ -42,6 +42,16 @@
 #include <gralloc_priv.h>
 #endif
 
+#ifdef MTK_MT6589
+// FPS profiling
+#include <utils/CallStack.h>
+#include <cutils/xlog.h>
+#include <gui/BufferQueueCore.h>
+
+// buffer count water level
+#define ALARM_BUFFER_COUNT 9
+#endif
+
 namespace android {
 
 Surface::Surface(
@@ -92,6 +102,11 @@ Surface::Surface(
 #ifdef SURFACE_SKIP_FIRST_DEQUEUE
     mDequeuedOnce = false;
 #endif
+
+#ifdef MTK_MT659
+    mConnectedApi = BufferQueueCore::NO_CONNECTED_API;
+#endif
+
 }
 
 Surface::~Surface() {
@@ -268,7 +283,12 @@ int Surface::dequeueBuffer(android_native_buffer_t** buffer, int* fenceFd) {
         }
     }
 
+#ifdef MTK_MT6589
+    // Google issue: binder transaction might be failed and get null fence
+    if (fence != NULL && fence->isValid()) {
+#else
     if (fence->isValid()) {
+#endif
         *fenceFd = fence->dup();
         if (*fenceFd == -1) {
             ALOGE("dequeueBuffer: error duping fence: %d", errno);
@@ -335,6 +355,44 @@ int Surface::queueBuffer(android_native_buffer_t* buffer, int fenceFd) {
     } else {
         timestamp = mTimestamp;
     }
+#ifdef MTK_MT6589
+    // get systime for MTK FPS check
+    int64_t systime;
+    if (mTimestamp == NATIVE_WINDOW_TIMESTAMP_AUTO) {
+        systime = timestamp;
+    } else {
+        systime = systemTime(SYSTEM_TIME_MONOTONIC);
+    }
+
+    // FPS info, for client side
+    if (true == mQueueFps.update(systime)) {
+        XLOGI("[STC::queueBuffer] (this:%p) fps:%.2f, dur:%.2f, max:%.2f, min:%.2f",
+            this,
+            mQueueFps.getFps(),
+            mQueueFps.getLastLogDuration() / 1e6,
+            mQueueFps.getMaxDuration() / 1e6,
+            mQueueFps.getMinDuration() / 1e6);
+    }
+
+    // check durarion between client queue calling, warn if excceeds (too late or fast)
+    nsecs_t duration = mQueueFps.getLastDuration();
+    if (NATIVE_WINDOW_API_MEDIA == mConnectedApi) {
+        if ((duration > ms2ns(50)) || (duration < ms2ns(16))) {
+            XLOGW("[STC::queueBuffer(Media)] this:%p, api:%d, abnormal interval:%.2f",
+                this, mConnectedApi, duration / 1e6);
+        }
+    } else if (NATIVE_WINDOW_API_CAMERA == mConnectedApi) {
+        if ((duration > ms2ns(40)) || (duration < ms2ns(16))) {
+            XLOGW("[STC::queueBuffer(Camera)] this:%p, api:%d, abnormal interval:%.2f",
+                this, mConnectedApi, duration / 1e6);
+        }
+    } else {
+        if (duration > ms2ns(5000)) {
+            XLOGI("[STC::queueBuffer] this:%p, api:%d, last queue time elapsed:%.2f",
+                this, mConnectedApi, duration / 1e6);
+        }
+    }
+#endif
     int i = getSlotFromBufferLocked(buffer);
     if (i < 0) {
         return i;
@@ -640,6 +698,17 @@ int Surface::connect(int api) {
     if (!err && api == NATIVE_WINDOW_API_CPU) {
         mConnectedToCpu = true;
     }
+#ifdef MTK_MT6589
+    // 1. keep connection api type for FPS profiling
+    // 2. dump call stack if connect fail
+    if (!err) {
+        mConnectedApi = api;
+    } else {
+        CallStac2 stack;
+        stack.update();
+        stack.dump("STC::connect");
+    }
+#endif
     return err;
 }
 
@@ -702,6 +771,16 @@ int Surface::setBufferCount(int bufferCount)
     ATRACE_CALL();
     ALOGV("Surface::setBufferCount");
     Mutex::Autolock lock(mMutex);
+
+#ifdef MTK_MT6589
+    // give warning message if set buffer count more than ALARM_BUFFER_COUNT
+    if (bufferCount > ALARM_BUFFER_COUNT) {
+        XLOGW("[STC::setBufferCount] set buffer count to %d", bufferCount);
+        CallStac2 stack;
+        stack.update();
+        stack.dump("[STC::setBufferCount]");
+    }
+#endif
 
     status_t err = mGraphicBufferProducer->setBufferCount(bufferCount);
     ALOGE_IF(err, "IGraphicBufferProducer::setBufferCount(%d) returned %s",
