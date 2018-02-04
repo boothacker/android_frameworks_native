@@ -1,0 +1,4 @@
+cd frameworks/native
+git remote add master https://github.com/boothacker/android_frameworks_native
+git fetch master 
+git cherry-pick e5d672f0301733f400f7eccfcf46e40d5a1d46c9
